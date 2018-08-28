@@ -65,7 +65,7 @@ object Functors extends App {
     }
 
     implicit def function1Functor[In]: Functor[
-      ({type F[X] = In => X})#F
+        ({type F[X] = In => X})#F
       ] =
       new Functor[({type F[X] = In => X})#F] {
         def map[A, B](fa: In => A)(f: A => B): In => B = fa andThen f

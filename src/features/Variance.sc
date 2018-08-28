@@ -1,13 +1,18 @@
+package features
+
 object Variance {
+
 	trait Fiend[-T] {
-		def beFriend(someone: T) = println(s"$this is a friend of $someone")
+		def beFriend(someone: T): Unit = println(s"$this is a friend of $someone")
 	}
+
 	class Person(name: String) extends Fiend[Person] {
     override def toString: String = name
   }
+
 	class Student(name: String) extends Person(name)
 	
-	def makeFiends(s: Student, f: Fiend[Student]) = f.beFriend(s)
+	def makeFiends(s: Student, f: Fiend[Student]): Unit = f.beFriend(s)
 
 	val john = new Student("John")
   val bob = new Student("Bob")

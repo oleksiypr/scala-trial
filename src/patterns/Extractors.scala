@@ -2,11 +2,13 @@ package patterns
 
 object Extractors extends App {
   object Name {
+
     def unapplySeq(name: String): Option[Seq[String]] = {
     	val parts = name.trim.split(" ")
   		if (parts.isEmpty) None else Some(parts)
     }
   }
+
   object IsCompaund {
     def unapply(name: String): Boolean = name.trim.split(" ").length > 2
   }
@@ -29,10 +31,12 @@ object Extractors extends App {
     case Name(first, "van", "der", last) => println(s"${first(0)}. van der $last is Dutch")
     case Name(first1, first2, "van", "der", last) => println(s"${first1(0)}. ${first2(0)}. van der $last is Dutch")
     case Name(_*) => println(s"${shortName(name)} is some other")
+    case _ => print("N/A")
   }
 
   determineNationality("Martin Odersky")
   determineNationality("Erich von Manstein")
   determineNationality("Johannes van der Waals")
   determineNationality("Johannes Diderik van der Waals")
+
 }

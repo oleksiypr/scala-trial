@@ -1,4 +1,6 @@
-object Trial {
+package features
+
+object VarArgsTrial {
 
   def acceptNonEmpty[T](xs: ::[T]): Unit = {
     println("head is: " + xs.head)

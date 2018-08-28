@@ -37,7 +37,7 @@ object MonadTrial extends App {
     repo.get(id).flatMap(f)
   }
 
-  val repoList = new Repo[String, List] {
+  val repoList: Repo[String, List] = new Repo[String, List] {
     private[this] var id: Int = -1
     private[this] val data = mutable.Map[Int, String]()
 
@@ -55,7 +55,7 @@ object MonadTrial extends App {
     }
   }
 
-  val repoOption = new Repo[String, Option] {
+  val repoOption: Repo[String, Option] = new Repo[String, Option] {
     private[this] var id: Int = -1
     private[this] val data = mutable.Map[Int, String]()
 

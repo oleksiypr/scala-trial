@@ -3,18 +3,21 @@ package catigory
 import catigory.Functors.Cats.Functor
 import scala.language.higherKinds
 
-object ApplyTrial {
+object ApplyTrial extends App {
 
   trait Apply[F[_]] extends Functor[F] {
+
     def ap[A, B](f: F[A => B])(fa: F[A]): F[B]
 
-    def product[A, B](fa: F[A], fb: F[B]): F[(A, B)] = ???
+    def product[A, B](fa: F[A], fb: F[B]): F[(A, B)] = {
+      ap(map(fa)((a: A) => (b: B) => (a, b)))(fb)
+    }
   }
 
   object Apply {
 
-    def apply[F[_]: Functor]: Functor[F] = {
-      implicitly[Functor[F]]
+    def apply[F[_]: Apply]: Apply[F] = {
+      implicitly[Apply[F]]
     }
 
     implicit object optionApply extends Apply[Option] {
@@ -27,7 +30,7 @@ object ApplyTrial {
       }
 
       override def map[A, B](fa: Option[A])(f: A => B): Option[B] = {
-        Functor[Option].map(fa)(f)
+        fa.map(f)
       }
     }
 
@@ -41,9 +44,12 @@ object ApplyTrial {
       }
 
       override def map[A, B](fa: List[A])(f: A => B): List[B] = {
-        Functor[List].map(fa)(f)
+        fa map f
       }
     }
   }
 
+  println(Apply[Option].product(Some(1), Some("A")))
+  println(Apply[Option].product(Some(1), None))
+  println(Apply[List].product(List(1, 2 ,3), List("A", "B")))
 }
