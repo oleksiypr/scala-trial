@@ -2,6 +2,7 @@ import catigory.FunctionalState.Variant1.State
 
 import scala.annotation.tailrec
 import scala.io.StdIn._
+import scala.util.Try
 
 object PlaySimpleGame extends App with SimpleGame with LowLevelImplicits {
 
@@ -9,8 +10,7 @@ object PlaySimpleGame extends App with SimpleGame with LowLevelImplicits {
 
   def makeMove(): Move = {
     println("enter move steps:")
-    val delta = readLine().toInt
-    Move(delta)
+    Move(readLine())
   }
 
   val g = play(gameState.origin, makeMove) {
@@ -58,7 +58,7 @@ trait SimpleGame extends GamePlay {
 
   final case class Game(position: Position, history: List[Position])
 
-  final case class Move(steps: Position)
+  final case class Move(cmd: String)
   final case class Moved(from: Position, to: Position)
 }
 
@@ -71,10 +71,14 @@ trait LowLevelImplicits { self: SimpleGame =>
 
     override def origin: Game = Game(p0, Nil)
 
-    override def validate(s: Game)(cmd: Move): Option[Moved] = {
-      val p = move(s.position, cmd.steps)
-      if (isInside(p, board._1, board._2)) Some(Moved(s.position, p))
-      else None
+    override def validate(s: Game)(mv: Move): Option[Moved] = {
+      for {
+        steps <- Try(mv.cmd.toInt).toOption
+        p = move(s.position, steps)
+        if isInside(p, board._1, board._2)
+      } yield {
+        Moved(s.position, p)
+      }
     }
 
     override def updated(game: Game)(e: Moved): Game = {
