@@ -13,14 +13,14 @@ object PlaySimpleGame extends App with SimpleGame with LowLevelImplicits {
     Move(readLine())
   }
 
-  val g = play(gameState.origin, makeMove) {
+  val gameOver = play(gameState.origin, makeMove) {
     println("'Q' to quit or 'enter' to continue")
     readLine() match {
       case "Q" | "q" => false
       case _ => true
     }
   }
-  println(g)
+  println(gameOver)
 }
 
 trait GamePlay {
