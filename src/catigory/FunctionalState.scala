@@ -11,21 +11,24 @@ object FunctionalState extends App {
       def updated(s: S)(e: E): S
     }
 
-    implicit class StateOps[S, C, E](val s: S) extends AnyVal {
+    object State {
 
-      def validate(cmd: C)(
-        implicit ev: State[S, C, E]): Option[E] = ev.validate(s)(cmd)
+      implicit class StateOps[S, C, E](val s: S) extends AnyVal {
 
-      def updated(e: E)(implicit ev: State[S, C, E]): S = ev.updated(s)(e)
-    }
+        def validate(cmd: C)(
+          implicit ev: State[S, C, E]): Option[E] = ev.validate(s)(cmd)
 
-    def program[S, C, E](r: () => C)(s: S)(
-        implicit ev: State[S, C, E]
-      ): Unit = {
-      val cmd = r()
-      s.validate(cmd) match {
-        case Some(e) => program(r)(s.updated(e))
-        case None => program(r)(s)
+        def updated(e: E)(implicit ev: State[S, C, E]): S = ev.updated(s)(e)
+      }
+
+      def program[S, C, E](r: () => C)(s: S)(
+          implicit ev: State[S, C, E]
+        ): Unit = {
+        val cmd = r()
+        s.validate(cmd) match {
+          case Some(e) => program(r)(s.updated(e))
+          case None => program(r)(s)
+        }
       }
     }
   }
