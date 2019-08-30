@@ -46,5 +46,5 @@ public class Service {
         return paymentMethod.getAccountId().equals(accountId);
     }
 
-    App.Forbidden x = App.Forbidden.apply("aaa");
+    // MyApp.Forbidden x = MyApp.Forbidden.apply("aaa");
 }

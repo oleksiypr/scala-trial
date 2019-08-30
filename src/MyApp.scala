@@ -3,7 +3,7 @@ import java.util.UUID
 import scala.util.{Failure, Success, Try}
 import Service._
 
-class App {
+class MyApp {
 
   case class Response(status: Int, body: String)
 

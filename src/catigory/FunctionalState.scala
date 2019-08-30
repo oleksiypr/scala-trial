@@ -21,6 +21,7 @@ object FunctionalState extends App {
         def updated(e: E)(implicit ev: State[S, C, E]): S = ev.updated(s)(e)
       }
 
+      @scala.annotation.tailrec
       def program[S, C, E](r: () => C)(s: S)(
           implicit ev: State[S, C, E]
         ): Unit = {
