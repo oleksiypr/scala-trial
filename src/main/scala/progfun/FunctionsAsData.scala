@@ -70,7 +70,7 @@ object FunctionsAsData extends App {
   }
 
 
-  val res = (put(1, "A") _ andThen put(2, "B") _) (emptyMap[Int, String])
+  val res = (put(1, "A") andThen put(2, "B")) (emptyMap[Int, String])
   println("Set as a function: ")
 //   This is not compile
    println(res(1))
@@ -83,5 +83,5 @@ object FunctionsAsData extends App {
     2 -> "B"
   )
 
-  println("!!!"  + (put(1, "A") _ andThen put(2, "B") _) (Map.empty)(5))
+  println("!!!"  + (put(1, "A") andThen put(2, "B")) (Map.empty)(5))
 }

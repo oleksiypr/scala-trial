@@ -13,7 +13,7 @@ object BarbaraLiskov extends App {
 
   object AppleDrinkMaker {
 
-    private[this] var appleStore = Set.empty[Apple]
+    private var appleStore = Set.empty[Apple]
 
     private def get(n: Int): Set[Apple] = {
       val as = appleStore.take(n)

@@ -122,7 +122,7 @@ object VectorAsFunctor {
   println()
 
   println("Identity Law")
-  val a = v map E
+  val a = v.map(E)
   val b = E(a)
   println(a)
   println()
@@ -131,8 +131,8 @@ object VectorAsFunctor {
   println()
 
   println("Composition Law")
-  val u = v map A map B
-  val w = v map (A andThen B)
+  val u = v.map(A).map(B)
+  val w = v.map(A.andThen(B))
 
   println(u)
   println()

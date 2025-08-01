@@ -65,6 +65,6 @@ object Linearization {
     })
   }
   class AB extends A with B {
-    override def children: List[A with B] = ???
+    override def children: List[A & B] = ???
   }
 }

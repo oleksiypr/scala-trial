@@ -98,12 +98,12 @@ object ApplyTrial extends App {
   println(Apply[List].product3(List(1, 2 ,3), List("A", "B"), List(true, false)))
 
 
-  val addArity2 = (a: Int, b: Int) ⇒ a + b
+  val addArity2 = (a: Int, b: Int) => a + b
   println(Apply[Option].ap2(Some(addArity2))(Some(1), Some(2)))
 
   println(Apply[Option].map2(Some(3), Some(4))(addArity2))
 
-  val applyListOpt = Apply[List] compose Apply[Option]
+  val applyListOpt = Apply[List].compose(Apply[Option])
   println(applyListOpt.map(List(Some(1), None))(e => e + 1))
 
 }

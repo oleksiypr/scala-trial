@@ -1,6 +1,7 @@
 package algorythms
 
 import scala.annotation.tailrec
+import scala.compiletime.uninitialized
 
 object AddTwoNumbers extends App {
 
@@ -39,7 +40,7 @@ object AddTwoNumbers extends App {
     class ListNode(var _x: Int = 0) {
       x = _x
       var next: ListNode = null
-      var x: Int = _
+      var x: Int = uninitialized
     }
 
 

@@ -72,7 +72,7 @@ object Functors extends App {
       }
 
     val f: Int => Int = x => x + 1
-    (Functor[List] compose Functor[Option]).map(List(Some(1), None, Some(3)))(f)
+    (Functor[List].compose(Functor[Option])).map(List(Some(1), None, Some(3)))(f)
     List(Some(2), None, Some(4))
   }
 
@@ -80,7 +80,7 @@ object Functors extends App {
 
   println(Functor[Option].map(Some("abd"))(s => s.length))
 
-  val lenOption: Option[String] ⇒ Option[Int] = Functor[Option].lift(_.length)
+  val lenOption: Option[String] => Option[Int] = Functor[Option].lift(_.length)
   println(lenOption(Some("Hello")))
   println(lenOption(Option(null)))
 
@@ -89,9 +89,9 @@ object Functors extends App {
 
   type FuctionInt[X] = Int => X
 
-  val f = Functor[FuctionInt].map(Foo)(foo => Bar("hello: " + foo.i.toString))
+  val f = Functor[FuctionInt].map(Foo.apply)(foo => Bar("hello: " + foo.i.toString))
   println(f(100))
 
   println(s"${List(Some(2), None, Some(4))} === " +
-    (Functor[List] compose Functor[Option]).map(List(Some(1), None, Some(3)))(_ + 1))
+    (Functor[List].compose(Functor[Option])).map(List(Some(1), None, Some(3)))(_ + 1))
 }

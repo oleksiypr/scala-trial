@@ -12,7 +12,7 @@ object Design extends App {
 
   class Vehicles(val sound: String) {
 
-    private[this] var latched = false
+    private var latched = false
 
     protected def stateOf(
         initial: String,

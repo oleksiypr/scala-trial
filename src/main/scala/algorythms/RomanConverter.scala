@@ -38,8 +38,8 @@ object RomanConverter extends App {
     case _ => throw new IllegalArgumentException("Must belong to a base of roman digits")
   }
   
-  (1 to 100).toList foreach (i => println(i + ": " + toRoman(i))) 
+  (1 to 100).toList foreach (i => println(s"$i: ${toRoman(i)}")) 
   
   val test = 224
-  println(test + ": " + toRoman(test))
+  println(s"$test: ${toRoman(test)}")
 }

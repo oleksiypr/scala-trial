@@ -66,8 +66,8 @@ trait LowLevelImplicits { self: SimpleGame =>
 
   implicit object gameState extends State[Game, Move, Moved] {
 
-    private[this] val board: (Position, Position) = (-50, +50)
-    private[this] val p0: Position = 0
+    private val board: (Position, Position) = (-50, +50)
+    private val p0: Position = 0
 
     override def origin: Game = Game(p0, Nil)
 

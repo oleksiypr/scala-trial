@@ -38,8 +38,8 @@ object MonadTrial extends App {
   }
 
   val repoList: Repo[String, List] = new Repo[String, List] {
-    private[this] var id: Int = -1
-    private[this] val data = mutable.Map[Int, String]()
+    private var id: Int = -1
+    private val data = mutable.Map[Int, String]()
 
     def add(e: String): List[Unit] = {
       println(s"Value to add: $e")
@@ -56,8 +56,8 @@ object MonadTrial extends App {
   }
 
   val repoOption: Repo[String, Option] = new Repo[String, Option] {
-    private[this] var id: Int = -1
-    private[this] val data = mutable.Map[Int, String]()
+    private var id: Int = -1
+    private val data = mutable.Map[Int, String]()
 
     def add(e: String): Option[Unit] = {
       println(s"Value to add: $e")

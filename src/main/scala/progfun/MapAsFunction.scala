@@ -12,7 +12,7 @@ object MapAsFunction extends App {
     k1 => if (k == k1) v else map(k1)
   }
 
-  val res: FunMap[Int, String] = (put(1, "A")_ andThen put(2, "B")_)(emptyMap[Int, String])
+  val res: FunMap[Int, String] = (put(1, "A") andThen put(2, "B"))(emptyMap[Int, String])
   println(res(1))
   println(res(2))
 
@@ -24,7 +24,7 @@ object MapAsFunction extends App {
   println(get(1)(map))
   println(get(2)(map))
 
-  val res2 = (put(1, "A2")_ andThen put(2, "B2")_)(Map.empty)
+  val res2 = (put(1, "A2") andThen put(2, "B2"))(Map.empty)
   println(res2(1))
   println(res2(2))
 }

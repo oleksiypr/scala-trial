@@ -48,7 +48,7 @@ object SemigroupTrial extends App {
           case Some(v2) => k1 -> Semigroup[V].combine(v1, v2)
           case None => k1 -> v1
         }
-      } ++ m2.filterKeys(!m1.contains(_))
+      } ++ m2.view.filterKeys(!m1.contains(_)).toMap
     }
   }
 
@@ -68,7 +68,7 @@ object SemigroupTrial extends App {
     Map("foo" -> List(3, 4), "bar" -> List(42))))
 
   println(Semigroup[Map[String, Map[String, Int]]].combine(
-    Map("foo" → Map("bar" → 5)),
-    Map("foo" → Map("bar" → 6))
+    Map("foo" -> Map("bar" -> 5)),
+    Map("foo" -> Map("bar" -> 6))
   ))
 }
