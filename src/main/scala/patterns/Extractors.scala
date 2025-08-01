@@ -4,8 +4,8 @@ object Extractors extends App {
   object Name {
 
     def unapplySeq(name: String): Option[Seq[String]] = {
-    	val parts = name.trim.split(" ")
-  		if (parts.isEmpty) None else Some(parts)
+      val parts = name.trim.split(" ")
+      if (parts.isEmpty) None else Some(parts)
     }
   }
 

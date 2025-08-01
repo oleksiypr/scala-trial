@@ -18,7 +18,7 @@ object ParFactorial {
         sc.parallelize(list).reduce(_ * _)
       }
     }*/
-  def factorialPar(num: BigInt): BigInt = (BigInt(1) to num).toParArray.product
+  def factorialPar(num: BigInt): BigInt = (BigInt(1) to num).product
 
   var t0 = System.currentTimeMillis()
   //factorial(200000)
@@ -27,6 +27,6 @@ object ParFactorial {
 
   t0 = System.currentTimeMillis()
   //factorialPar(200000)
-  (BigInt(1) to 200000).toParArray.product
+  (BigInt(1) to 200000).product
   println(System.currentTimeMillis() - t0)
 }

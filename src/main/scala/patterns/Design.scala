@@ -21,7 +21,7 @@ object Design extends App {
       if (!latched) initial else eventual
     }
 
-    def accelerate() {
+    def accelerate(): Unit = {
       println(sound)
       latched = true
     }

@@ -38,7 +38,7 @@ object CakePattern extends App {
   trait Service {
     this: Repository =>
 
-    def create(name: String) {
+    def create(name: String): Unit = {
       println(s"Do some stuff and preparation to create $name")
       val u = User(name)
       userDao.save(u)

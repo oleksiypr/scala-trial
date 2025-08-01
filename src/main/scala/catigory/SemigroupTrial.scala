@@ -52,10 +52,10 @@ object SemigroupTrial extends App {
     }
   }
 
-  implicit def optionSemigroup[A: Semigroup] = new OptionSemigroup[A]
-  implicit def functionSemigruop[A: Semigroup, B: Semigroup] = new FunctionSemigruop[A, B]
-  implicit def listSemigroup[A: Semigroup] = new ListSemigroup[A]
-  implicit def mapSemigroup[K, V: Semigroup] = new MapSemigroup[K, V]
+  implicit def optionSemigroup[A: Semigroup]: Semigroup[Option[A]] = new OptionSemigroup[A]
+  implicit def functionSemigruop[A: Semigroup, B: Semigroup]: Semigroup[A => B] = new FunctionSemigruop[A, B]
+  implicit def listSemigroup[A]: Semigroup[List[A]] = new ListSemigroup[A]
+  implicit def mapSemigroup[K, V: Semigroup]: Semigroup[Map[K, V]] = new MapSemigroup[K, V]
 
   println(Semigroup[Option[Int]].combine(Some(2), Some(3)))
   println(Semigroup[Option[Int]].combine(Some(2), None))

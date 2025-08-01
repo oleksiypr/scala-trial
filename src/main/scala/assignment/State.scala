@@ -43,6 +43,6 @@ object State extends App {
   val (x3, r4) = double(r3)
   val (x4, _)  = double(r4)
 
-  println(x0, x1, x2, x3, x4)
+  println(s"$x0, $x1, $x2, $x3, $x4")
 }
 

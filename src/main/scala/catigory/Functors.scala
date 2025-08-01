@@ -92,6 +92,6 @@ object Functors extends App {
   val f = Functor[FuctionInt].map(Foo)(foo => Bar("hello: " + foo.i.toString))
   println(f(100))
 
-  println(List(Some(2), None, Some(4)) + " === " +
+  println(s"${List(Some(2), None, Some(4))} === " +
     (Functor[List] compose Functor[Option]).map(List(Some(1), None, Some(3)))(_ + 1))
 }
