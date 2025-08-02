@@ -4,6 +4,9 @@ target
 .metadata
 .mock
 .classpath
+.bloop
+.metals
+.vscode
 .gradle
 .project
 .settings
