@@ -6,7 +6,7 @@ import org.typelevel.ci.CIString
 
 private type HeaderNameValue = (CIString, String)
 
-private def getHeaderValue(
+private def getValue(
     headerName: CIString, 
     headers: Headers
   ): Option[String] = headers.get(headerName).map(_.head.value)
@@ -22,9 +22,9 @@ extension (response: IO[Response[IO]])
           Header.Raw(hs._1, hs._2)
 
 extension (request: Request[IO])
-  def getHeader(headerName: CIString): Option[String] = 
-    getHeaderValue(headerName, request.headers)
+  def getHeaderValue(headerName: CIString): Option[String] =
+    getValue(headerName, request.headers)
 
 extension (response: Response[IO])
-  def getHeader(headerName: CIString): Option[String] =
-    getHeaderValue(headerName, response.headers)
+  def getHeaderValue(headerName: CIString): Option[String] =
+    getValue(headerName, response.headers)

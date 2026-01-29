@@ -32,7 +32,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
   """
 
   "AsyncJobApi" should :
-    "handle HEAD request which returns count of job items" in :
+    "handle POST /job request which returns count of job items" in :
       val jobProcessor = mock[JobProcessor]
       when :
         jobProcessor.count(any[Instant], any[Instant])
@@ -40,14 +40,13 @@ class AsyncJobApiSpec extends AsyncWordSpec
 
       val api = AsyncJobApi(jobProcessor)
 
-      val request = Request[IO](Method.HEAD, uri"/jobs")
+      val request = Request[IO](Method.POST, uri"/jobs")
         .withEntity(jobRequest)
         .withHeaders(`Content-Type`(MediaType.application.json))
 
       api.routes.orNotFound.run(request).asserting : resp =>
         resp.status shouldBe Status.Accepted
         verify(jobProcessor).count(is(from), is(to))
-        resp.headers.get(ci"X-Total-Count").map(_.head.value) shouldBe Some("42")
-
-
+        resp.getHeaderValue(ci"X-Total-Count") shouldBe Some("42")
+        
 }

@@ -26,7 +26,7 @@ class AsyncJobApi(jobProcessor: JobProcessor) {
   import AsyncJobApi.*
 
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
-    case req @ HEAD -> Root / "jobs" =>
+    case req @ POST -> Root / "jobs" =>
       req.as[JobRequest].flatMap { jobQuery =>
         jobProcessor.count(jobQuery.from, jobQuery.to) >>= { count =>
           Accepted().putHeader(CountHeader, count.toString)
