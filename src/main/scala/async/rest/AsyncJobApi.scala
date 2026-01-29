@@ -1,17 +1,19 @@
 package async.rest
 
 import async.service.JobProcessor
+import cats.effect.IO
+import cats.syntax.all.*
 import org.http4s.*
 import org.http4s.dsl.io.*
-import org.http4s.implicits.*
-import cats.effect.IO
-import org.typelevel.ci.CIString
 import org.typelevel.ci.*
 import java.time.Instant
-import cats.syntax.all.*
+import java.time.format.DateTimeFormatter
 import scala.util.Try
 
 object AsyncJobApi {
+
+  given QueryParamEncoder[Instant] = QueryParamEncoder[String]
+    .contramap(DateTimeFormatter.ISO_INSTANT.format)
 
   given QueryParamDecoder[Instant] = QueryParamDecoder[String]
     .emap { s =>

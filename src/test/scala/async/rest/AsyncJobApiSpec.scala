@@ -16,10 +16,12 @@ import java.time.Instant
 class AsyncJobApiSpec extends AsyncWordSpec
   with AsyncIOSpec with Matchers with MockitoSugar {
 
+  import AsyncJobApi.given
+
   "AsyncJobApi" should {
     "handle HEAD request which returns count of job items" in {
-      val from = "2026-01-21T12:11:00Z"
-      val to   = "2026-01-28T17:05:00Z"
+      val from = Instant.parse("2026-01-21T12:11:00Z")
+      val to   = Instant.parse("2026-01-28T17:05:00Z")
 
       val jobProcessor = mock[JobProcessor]
       when {
@@ -34,7 +36,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
       val response = api.routes.orNotFound.run(request)
       response.asserting { resp =>
         resp.status shouldBe Status.Accepted
-        verify(jobProcessor).count(is(Instant.parse(from)), is(Instant.parse(to)))
+        verify(jobProcessor).count(is(from), is(to))
         resp.headers.get(ci"X-Total-Count").map(_.head.value) shouldBe Some("42")
       }
     }
