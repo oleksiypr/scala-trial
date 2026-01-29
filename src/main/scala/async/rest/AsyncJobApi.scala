@@ -11,16 +11,18 @@ import java.time.format.DateTimeFormatter
 import scala.util.Try
 
 object AsyncJobApi {
+  
+  private val CountHeader = ci"X-Total-Count"
 
   given QueryParamEncoder[Instant] = QueryParamEncoder[String]
     .contramap(DateTimeFormatter.ISO_INSTANT.format)
 
   given QueryParamDecoder[Instant] = QueryParamDecoder[String]
-    .emap { s =>
+    .emap : s =>
       Try(Instant.parse(s))
         .toEither
         .leftMap(ex => ParseFailure(s, ex.getMessage))
-    }
+    
 
   private object FromParam extends QueryParamDecoderMatcher[Instant]("from")
   private object ToParam extends QueryParamDecoderMatcher[Instant]("to")
@@ -33,7 +35,7 @@ class AsyncJobApi(jobProcessor: JobProcessor) {
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     case HEAD -> Root / "jobs" :? FromParam(from) +& ToParam(to) =>
       jobProcessor.count(from, to) >>= { count =>
-        Accepted().map(_.putHeaders(Header.Raw(ci"X-Total-Count", count.toString)))
+        Accepted().putHeader(CountHeader, count.toString)
       }
   }
 }
