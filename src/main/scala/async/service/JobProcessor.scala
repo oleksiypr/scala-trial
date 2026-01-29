@@ -1,9 +1,18 @@
 package async.service
 
 import cats.effect.IO
+
 import java.time.Instant
+import java.util.UUID
+
+object JobProcessor {
+  case class Job(count: Int, id: UUID)
+}
 
 class JobProcessor {
   
-  def count(from: Instant, to: Instant): IO[Int] = IO.raiseError(???)
+  import JobProcessor.*
+  
+  def prepare(from: Instant, to: Instant): IO[Job] = IO.raiseError(???)
+  
 }

@@ -11,11 +11,14 @@ import org.scalatestplus.mockito.MockitoSugar
 import org.mockito.Mockito.*
 import org.mockito.ArgumentMatchers.{any, eq as is}
 import org.typelevel.ci.*
+
 import java.time.Instant
 import org.http4s.circe.*
 import io.circe.literal.*
 import org.http4s.headers.`Content-Type`
 import org.http4s.MediaType
+
+import java.util.UUID
 
 class AsyncJobApiSpec extends AsyncWordSpec
   with AsyncIOSpec with Matchers with MockitoSugar {
@@ -31,12 +34,14 @@ class AsyncJobApiSpec extends AsyncWordSpec
     }
   """
 
-  "AsyncJobApi" should :
-    "handle POST /job request which returns count of job items" in :
+  "POST /job" should :
+    "returns count of job items, job result location" in :
+      val jobId = UUID.randomUUID()
       val jobProcessor = mock[JobProcessor]
       when :
-        jobProcessor.count(any[Instant], any[Instant])
-      .thenReturn(IO.pure(42))
+        jobProcessor.prepare(any[Instant], any[Instant])
+      .thenReturn :
+        IO.pure(JobProcessor.Job(count = 42, id = jobId))
 
       val api = AsyncJobApi(jobProcessor)
 
@@ -46,7 +51,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
 
       api.routes.orNotFound.run(request).asserting : resp =>
         resp.status shouldBe Status.Accepted
-        verify(jobProcessor).count(is(from), is(to))
+        verify(jobProcessor).prepare(is(from), is(to))
         resp.getHeaderValue(ci"X-Total-Count") shouldBe Some("42")
-        
+
 }
