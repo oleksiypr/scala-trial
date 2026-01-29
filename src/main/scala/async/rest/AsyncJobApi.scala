@@ -9,18 +9,30 @@ import org.typelevel.ci.CIString
 import org.typelevel.ci.*
 import java.time.Instant
 import cats.syntax.all.*
+import scala.util.Try
 
+object AsyncJobApi {
+
+  given QueryParamDecoder[Instant] = QueryParamDecoder[String]
+    .emap { s =>
+      Try(Instant.parse(s))
+        .toEither
+        .leftMap(ex => ParseFailure(s, ex.getMessage))
+    }
+
+  private object FromParam extends QueryParamDecoderMatcher[Instant]("from")
+  private object ToParam extends QueryParamDecoderMatcher[Instant]("to")
+}
 
 class AsyncJobApi(jobProcessor: JobProcessor) {
+
+  import AsyncJobApi.*
+
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     case HEAD -> Root / "jobs" :? FromParam(from) +& ToParam(to) =>
-      val fromInstant = Instant.parse(from)
-      val toInstant = Instant.parse(to)
-      jobProcessor.count(fromInstant, toInstant) >>= { count =>
+      jobProcessor.count(from, to) >>= { count =>
         Accepted().map(_.putHeaders(Header.Raw(ci"X-Total-Count", count.toString)))
       }
   }
 }
 
-object FromParam extends QueryParamDecoderMatcher[String]("from")
-object ToParam   extends QueryParamDecoderMatcher[String]("to")
