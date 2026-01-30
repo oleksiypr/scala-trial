@@ -1,5 +1,6 @@
 package async.rest
 
+import async.model.TimeRange
 import async.service.JobService
 import cats.effect.IO
 import cats.syntax.all.*
@@ -10,24 +11,22 @@ import org.http4s.circe.*
 import org.http4s.dsl.io.*
 import org.http4s.headers.Location
 import org.http4s.implicits.*
+
 import java.time.Instant
 
 object AsyncJobApi {
-
-  case class JobRequest(from: Instant, to: Instant)
-
-  given Decoder[JobRequest] = deriveDecoder[JobRequest]
-  given EntityDecoder[IO, JobRequest] = jsonOf[IO, JobRequest]
-
+  given Decoder[TimeRange] = deriveDecoder[TimeRange]
+  given EntityDecoder[IO, TimeRange] = jsonOf[IO, TimeRange]
 }
+
 
 class AsyncJobApi(jobService: JobService) {
 
-  import AsyncJobApi.*
+  import AsyncJobApi.given 
 
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO]:
     case req @ POST -> Root / "jobs" =>
-      req.as[JobRequest] >>= { req =>
+      req.as[TimeRange] >>= { req =>
         for
           job  <- jobService.prepare(req.from, req.to)
           _    <- jobService.process(req.from, req.to).start
