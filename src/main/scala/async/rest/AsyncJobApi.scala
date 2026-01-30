@@ -26,10 +26,10 @@ class AsyncJobApi(jobService: JobService) {
 
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO]:
     case req @ POST -> Root / "jobs" =>
-      req.as[TimeRange] >>= { req =>
+      req.as[TimeRange] >>= { query =>
         for
-          job  <- jobService.prepare(req.from, req.to)
-          _    <- jobService.process(req.from, req.to).start
+          job  <- jobService.prepare(query)
+          _    <- jobService.process(query.from, query.to).start
           resp <- Accepted()
         yield {
           resp

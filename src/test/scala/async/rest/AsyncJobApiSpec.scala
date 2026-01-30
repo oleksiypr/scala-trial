@@ -1,5 +1,6 @@
 package async.rest
 
+import async.model.TimeRange
 import async.service.JobService
 import cats.effect.{Deferred, IO}
 import cats.effect.testing.scalatest.AsyncIOSpec
@@ -46,7 +47,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
       def deferredSetup(jobResult: Deferred[IO, Unit]): IO[JobService] = IO {
         val jobService = mock[JobService]
         when:
-          jobService.prepare(any[Instant], any[Instant])
+          jobService.prepare(any[TimeRange])
         .thenReturn:
           IO.pure(JobService.Job(count, jobId))
 
@@ -69,7 +70,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
       test.timeoutTo(200.millis, IO.raiseError(new TimeoutException))
         .asserting: (resp, jobService) =>
           resp.status shouldBe Status.Accepted
-          verify(jobService).prepare(is(from), is(to))
+          verify(jobService).prepare(is(TimeRange(from, to)))
           verify(jobService).process(is(from), is(to))
           resp.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
           resp.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
