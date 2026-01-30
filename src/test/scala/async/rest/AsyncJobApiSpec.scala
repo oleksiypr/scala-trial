@@ -66,7 +66,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
       yield
         (response, jobProcessor)
 
-      test.timeoutTo(1.second, IO.raiseError(new TimeoutException))
+      test.timeoutTo(200.millis, IO.raiseError(new TimeoutException))
         .asserting: (resp, jobProcessor) =>
           resp.status shouldBe Status.Accepted
           verify(jobProcessor).prepare(is(from), is(to))

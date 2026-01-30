@@ -18,7 +18,7 @@ object AsyncJobApi {
 
   given Decoder[JobRequest] = deriveDecoder[JobRequest]
   given EntityDecoder[IO, JobRequest] = jsonOf[IO, JobRequest]
-  
+
 }
 
 class AsyncJobApi(jobProcessor: JobProcessor) {
@@ -28,9 +28,9 @@ class AsyncJobApi(jobProcessor: JobProcessor) {
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO]:
     case req @ POST -> Root / "jobs" =>
       req.as[JobRequest] >>= { req =>
-        for 
+        for
           job  <- jobProcessor.prepare(req.from, req.to)
-          _    <- jobProcessor.process(req.from, req.to)
+          _    <- jobProcessor.process(req.from, req.to).start
           resp <- Accepted()
         yield {
           resp
