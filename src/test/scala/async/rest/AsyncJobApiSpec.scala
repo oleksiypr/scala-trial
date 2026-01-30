@@ -17,6 +17,8 @@ import org.scalatestplus.mockito.MockitoSugar
 
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.TimeoutException
+import scala.concurrent.duration.DurationInt
 
 class AsyncJobApiSpec extends AsyncWordSpec
   with AsyncIOSpec with Matchers with MockitoSugar {
@@ -64,12 +66,13 @@ class AsyncJobApiSpec extends AsyncWordSpec
       yield
         (response, jobProcessor)
 
-      test.asserting: (resp, jobProcessor) =>
-        resp.status shouldBe Status.Accepted
-        verify(jobProcessor).prepare(is(from), is(to))
-        verify(jobProcessor).process(is(from), is(to))
-        resp.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
-        resp.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
+      test.timeoutTo(1.second, IO.raiseError(new TimeoutException))
+        .asserting: (resp, jobProcessor) =>
+          resp.status shouldBe Status.Accepted
+          verify(jobProcessor).prepare(is(from), is(to))
+          verify(jobProcessor).process(is(from), is(to))
+          resp.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
+          resp.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
     }
   }
 }
