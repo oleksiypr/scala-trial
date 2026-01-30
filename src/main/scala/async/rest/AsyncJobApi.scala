@@ -19,7 +19,6 @@ object AsyncJobApi {
   given EntityDecoder[IO, TimeRange] = jsonOf[IO, TimeRange]
 }
 
-
 class AsyncJobApi(jobService: JobService) {
 
   import AsyncJobApi.given 
@@ -29,7 +28,7 @@ class AsyncJobApi(jobService: JobService) {
       req.as[TimeRange] >>= { query =>
         for
           job  <- jobService.prepare(query)
-          _    <- jobService.process(query.from, query.to).start
+          _    <- jobService.process(job).start
           resp <- Accepted()
         yield {
           resp
