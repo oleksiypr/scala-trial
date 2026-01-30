@@ -1,6 +1,6 @@
 package async.rest
 
-import async.service.JobProcessor
+import async.service.JobService
 import cats.effect.{Deferred, IO}
 import cats.effect.testing.scalatest.AsyncIOSpec
 import cats.syntax.all.*
@@ -43,19 +43,19 @@ class AsyncJobApiSpec extends AsyncWordSpec
         .withEntity(jobRequest)
         .withHeaders(`Content-Type`(MediaType.application.json))
 
-      def deferredSetup(jobResult: Deferred[IO, Unit]): IO[JobProcessor] = IO {
-        val jobProcessor = mock[JobProcessor]
+      def deferredSetup(jobResult: Deferred[IO, Unit]): IO[JobService] = IO {
+        val jobService = mock[JobService]
         when:
-          jobProcessor.prepare(any[Instant], any[Instant])
+          jobService.prepare(any[Instant], any[Instant])
         .thenReturn:
-          IO.pure(JobProcessor.Job(count, jobId))
+          IO.pure(JobService.Job(count, jobId))
 
         when:
-          jobProcessor.process(any[Instant], any[Instant])
+          jobService.process(any[Instant], any[Instant])
         .thenReturn:
           jobResult.get
 
-        jobProcessor
+        jobService
       }
 
       val test = for
@@ -67,10 +67,10 @@ class AsyncJobApiSpec extends AsyncWordSpec
         (response, jobProcessor)
 
       test.timeoutTo(200.millis, IO.raiseError(new TimeoutException))
-        .asserting: (resp, jobProcessor) =>
+        .asserting: (resp, jobService) =>
           resp.status shouldBe Status.Accepted
-          verify(jobProcessor).prepare(is(from), is(to))
-          verify(jobProcessor).process(is(from), is(to))
+          verify(jobService).prepare(is(from), is(to))
+          verify(jobService).process(is(from), is(to))
           resp.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
           resp.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
     }

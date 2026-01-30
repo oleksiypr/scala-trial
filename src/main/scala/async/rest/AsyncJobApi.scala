@@ -1,6 +1,6 @@
 package async.rest
 
-import async.service.JobProcessor
+import async.service.JobService
 import cats.effect.IO
 import cats.syntax.all.*
 import io.circe.Decoder
@@ -21,7 +21,7 @@ object AsyncJobApi {
 
 }
 
-class AsyncJobApi(jobProcessor: JobProcessor) {
+class AsyncJobApi(jobService: JobService) {
 
   import AsyncJobApi.*
 
@@ -29,8 +29,8 @@ class AsyncJobApi(jobProcessor: JobProcessor) {
     case req @ POST -> Root / "jobs" =>
       req.as[JobRequest] >>= { req =>
         for
-          job  <- jobProcessor.prepare(req.from, req.to)
-          _    <- jobProcessor.process(req.from, req.to).start
+          job  <- jobService.prepare(req.from, req.to)
+          _    <- jobService.process(req.from, req.to).start
           resp <- Accepted()
         yield {
           resp
