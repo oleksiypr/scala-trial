@@ -11,7 +11,6 @@ import org.http4s.circe.*
 import org.http4s.dsl.io.*
 import org.http4s.headers.Location
 import org.http4s.implicits.*
-
 import java.time.Instant
 
 object AsyncJobApi {
@@ -21,7 +20,7 @@ object AsyncJobApi {
 
 class AsyncJobApi(jobService: JobService) {
 
-  import AsyncJobApi.given 
+  import AsyncJobApi.given
 
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO]:
     case req @ POST -> Root / "jobs" =>
@@ -30,10 +29,9 @@ class AsyncJobApi(jobService: JobService) {
           job  <- jobService.prepare(query)
           _    <- jobService.process(job).start
           resp <- Accepted()
-        yield {
+        yield
           resp
             .putHeader(Location(uri"/jobs" / job.id.toString))
             .putHeader(`X-Total-Count`(job.count))
-        }
       }
 }

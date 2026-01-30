@@ -29,7 +29,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
   val query = TimeRange(from, to)
   val count = 42L
   val job   = JobService.Job(jobId, count, query: TimeRange)
-  
+
   val request = Request[IO](Method.POST, uri"/jobs")
     .withEntity(
       json"""
@@ -42,29 +42,14 @@ class AsyncJobApiSpec extends AsyncWordSpec
 
   "POST /job" should {
     "initiate the job in parallel, respond with count of job items in headers" in {
-      
-      def deferredSetup(jobResult: Deferred[IO, Unit]): IO[JobService] = IO {
-        val jobService = mock[JobService]
-        when:
-          jobService.prepare(any[TimeRange])
-        .thenReturn:
-          IO.pure(job)
-
-        when:
-          jobService.process(any[JobService.Job])
-        .thenReturn:
-          jobResult.get
-
-        jobService
-      }
 
       val test = for
-        jobResult    <- Deferred[IO, Unit]
-        jobProcessor <- deferredSetup(jobResult)
-        api           = AsyncJobApi(jobProcessor)
-        response     <- api.routes.orNotFound.run(request)
+        jobResult  <- Deferred[IO, Unit]
+        jobService <- deferredSetup(jobResult)
+        api         = AsyncJobApi(jobService)
+        response   <- api.routes.orNotFound.run(request)
       yield
-        (response, jobProcessor)
+        (response, jobService)
 
       test.timeoutTo(200.millis, IO.raiseError(new TimeoutException))
         .asserting: (resp, jobService) =>
@@ -74,5 +59,20 @@ class AsyncJobApiSpec extends AsyncWordSpec
           resp.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
           resp.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
     }
+  }
+
+  private def deferredSetup(jobResult: Deferred[IO, Unit]): IO[JobService] = IO {
+    val jobService = mock[JobService]
+    when:
+      jobService.prepare(any[TimeRange])
+    .thenReturn:
+      IO.pure(job)
+
+    when:
+      jobService.process(any[JobService.Job])
+    .thenReturn:
+      jobResult.get
+
+    jobService
   }
 }
