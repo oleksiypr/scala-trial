@@ -8,7 +8,10 @@ import io.circe.generic.semiauto.*
 import org.http4s.*
 import org.http4s.circe.*
 import org.http4s.dsl.io.*
+import org.http4s.headers.Location
+import org.http4s.implicits.*
 import org.typelevel.ci.*
+
 import java.time.Instant
 
 object AsyncJobApi {
@@ -18,19 +21,21 @@ object AsyncJobApi {
   given Decoder[JobRequest] = deriveDecoder[JobRequest]
   given EntityDecoder[IO, JobRequest] = jsonOf[IO, JobRequest]
 
-  private val CountHeader = ci"X-Total-Count"
+  private val CountHeader    = ci"X-Total-Count"
+  private val LocationHeader = ci"Location"
 }
 
 class AsyncJobApi(jobProcessor: JobProcessor) {
 
   import AsyncJobApi.*
 
-  val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
+  val routes: HttpRoutes[IO] = HttpRoutes.of[IO] :
     case req @ POST -> Root / "jobs" =>
-      req.as[JobRequest].flatMap { jobQuery =>
+      req.as[JobRequest] >>= { jobQuery =>
         jobProcessor.prepare(jobQuery.from, jobQuery.to) >>= { job =>
-          Accepted().putHeader(CountHeader, job.count.toString)
+          Accepted()
+            .putHeader(Location(uri"/jobs" / job.id.toString))
+            .putHeader(`X-Total-Count`(42))
         }
       }
-  }
 }

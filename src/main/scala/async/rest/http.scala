@@ -1,30 +1,30 @@
 package async.rest
 
 import cats.effect.IO
-import org.http4s.{Header, Headers, Request, Response}
+import org.http4s.{Header, Headers, ParseResult, Request, Response}
 import org.typelevel.ci.CIString
+import org.typelevel.ci.*
 
-private type HeaderNameValue = (CIString, String)
+final case class `X-Total-Count`(count: Long)
 
-private def getValue(
-    headerName: CIString, 
-    headers: Headers
-  ): Option[String] = headers.get(headerName).map(_.head.value)
+object `X-Total-Count` {
+  given Header[`X-Total-Count`, Header.Single] =
+    Header.create(
+      ci"X-Total-Count",
+      _.count.toString,
+      s => ParseResult.fromTryCatchNonFatal("Invalid X-Total-Count")(
+        `X-Total-Count`(s.toLong)
+      )
+    )
+}
 
 extension (response: IO[Response[IO]])
-  def putHeader(name: CIString, value: String): IO[Response[IO]] =
-    putHeaders((name, value))
+  def putHeader[T: [t] =>> Header[t, ?]](header: T): IO[Response[IO]] =
+    response.map(_.putHeaders(header))
 
-  def putHeaders(headers: HeaderNameValue*): IO[Response[IO]] =
+  def putHeaders(headers: (CIString, String)*): IO[Response[IO]] =
     response.map :
       _.putHeaders :
         headers.map : hs =>
           Header.Raw(hs._1, hs._2)
 
-extension (request: Request[IO])
-  def getHeaderValue(headerName: CIString): Option[String] =
-    getValue(headerName, request.headers)
-
-extension (response: Response[IO])
-  def getHeaderValue(headerName: CIString): Option[String] =
-    getValue(headerName, response.headers)
