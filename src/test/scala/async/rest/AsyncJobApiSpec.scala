@@ -1,7 +1,7 @@
 package async.rest
 
 import async.service.JobProcessor
-import cats.effect.IO
+import cats.effect.{Deferred, IO}
 import cats.effect.testing.scalatest.AsyncIOSpec
 import cats.syntax.all.*
 import io.circe.literal.*
@@ -32,25 +32,44 @@ class AsyncJobApiSpec extends AsyncWordSpec
     }
   """
 
-  "POST /job" should :
-    "returns count of job items, job result location" in :
+  "POST /job" should {
+    "initiate the job in parallel, respond with count of job items in headers" in {
       val jobId = UUID.fromString("48bf7b76-00aa-4583-b8d6-d63c1830696f")
-
-      val jobProcessor = mock[JobProcessor]
-      when :
-        jobProcessor.prepare(any[Instant], any[Instant])
-      .thenReturn :
-        IO.pure(JobProcessor.Job(count = 42, id = jobId))
-
-      val api = AsyncJobApi(jobProcessor)
+      val count = 42
 
       val request = Request[IO](Method.POST, uri"/jobs")
         .withEntity(jobRequest)
         .withHeaders(`Content-Type`(MediaType.application.json))
 
-      api.routes.orNotFound.run(request).asserting : resp =>
+      def deferredSetup(jobResult: Deferred[IO, Unit]): IO[JobProcessor] = IO {
+        val jobProcessor = mock[JobProcessor]
+        when:
+          jobProcessor.prepare(any[Instant], any[Instant])
+        .thenReturn:
+          IO.pure(JobProcessor.Job(count, jobId))
+
+        when:
+          jobProcessor.process(any[Instant], any[Instant])
+        .thenReturn:
+          jobResult.get
+
+        jobProcessor
+      }
+
+      val test = for
+        jobResult    <- Deferred[IO, Unit]
+        jobProcessor <- deferredSetup(jobResult)
+        api           = AsyncJobApi(jobProcessor)
+        response     <- api.routes.orNotFound.run(request)
+      yield
+        (response, jobProcessor)
+
+      test.asserting: (resp, jobProcessor) =>
         resp.status shouldBe Status.Accepted
         verify(jobProcessor).prepare(is(from), is(to))
-        resp.headers.get[Location].map(_.uri) shouldBe (uri"/jobs"/jobId).some
-        resp.headers.get[`X-Total-Count`].map(_.count) shouldBe 42.some
+        verify(jobProcessor).process(is(from), is(to))
+        resp.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
+        resp.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
+    }
+  }
 }

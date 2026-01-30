@@ -1,8 +1,7 @@
 package async.rest
 
 import cats.effect.IO
-import org.http4s.{Header, Headers, ParseResult, Request, Response}
-import org.typelevel.ci.CIString
+import org.http4s.{Header, ParseResult, Response}
 import org.typelevel.ci.*
 
 final case class `X-Total-Count`(count: Long)
@@ -18,13 +17,7 @@ object `X-Total-Count` {
     )
 }
 
-extension (response: IO[Response[IO]])
-  def putHeader[T: [t] =>> Header[t, ?]](header: T): IO[Response[IO]] =
-    response.map(_.putHeaders(header))
-
-  def putHeaders(headers: (CIString, String)*): IO[Response[IO]] =
-    response.map :
-      _.putHeaders :
-        headers.map : hs =>
-          Header.Raw(hs._1, hs._2)
+extension (response: Response[IO])
+  def putHeader[T: [t] =>> Header[t, ?]](header: T): Response[IO] =
+    response.putHeaders(header)
 
