@@ -6,7 +6,7 @@ import java.time.Instant
 import java.util.UUID
 
 object JobService {
-  case class Job(count: Int, id: UUID)
+  case class Job(id: UUID, count: Int)
 }
 
 class JobService {

@@ -49,7 +49,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
         when:
           jobService.prepare(any[TimeRange])
         .thenReturn:
-          IO.pure(JobService.Job(count, jobId))
+          IO.pure(JobService.Job(jobId, count))
 
         when:
           jobService.process(any[Instant], any[Instant])
