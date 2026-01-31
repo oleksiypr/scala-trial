@@ -28,8 +28,8 @@ class AsyncJobApi(jobService: JobService, logger: Logger) {
         for
           job  <- jobService.prepare(query)
           _    <- jobService.process(job)
-                    .flatMap(count => {
-                      logger.info(s"[Async] [POST] [/jobs] id: ${job.id}, items processed: $count")
+                    .flatMap(result => {
+                      logger.info(s"[Async] [POST] [/jobs] id: ${result.id}, items processed: ${result.processed}")
                     }).start
           resp <- Accepted()
         yield

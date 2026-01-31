@@ -21,6 +21,8 @@ import scala.concurrent.duration.DurationInt
 
 class AsyncJobApiSpec extends AsyncWordSpec
   with AsyncIOSpec with Matchers with MockitoSugar {
+  
+  import JobService.*
 
   val jobId = UUID.fromString("48bf7b76-00aa-4583-b8d6-d63c1830696f")
   val from  = Instant.parse("2026-01-21T12:11:00Z")
@@ -49,7 +51,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
       }
 
       val test = for
-        jobResult  <- Deferred[IO, Long]
+        jobResult  <- Deferred[IO, JobResult]
         deps       <- setup(jobResult)
         api         = AsyncJobApi(deps.jobService, deps.logger)
         response   <- api.routes.orNotFound.run(request).timeout(200.millis)
@@ -64,12 +66,12 @@ class AsyncJobApiSpec extends AsyncWordSpec
 
     "log job result asynchronously when job completes" in {
       for
-        jobResult <- Deferred[IO, Long]
+        jobResult <- Deferred[IO, JobResult]
         deps      <- setup(jobResult)
         api        = AsyncJobApi(deps.jobService, deps.logger)
         response  <- api.routes.orNotFound.run(request).timeout(100.millis)
         assertion <- IO(response.status shouldBe Status.Accepted)
-        _         <- jobResult.complete(40L)
+        _         <- jobResult.complete(JobResult(jobId, processed = 40L))
         _         <- verifyIO(deps.logger):
                       _.info(is(s"[Async] [POST] [/jobs] id: $jobId, items processed: 40"))
       yield
@@ -80,7 +82,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
   private def verifyIO[R, A](r: R)(f: R => A): IO[A] =
     IO(verify(r, timeout(100).times(1))).map(f)
 
-  private def setup(jobResult: Deferred[IO, Long]) = IO {
+  private def setup(jobResult: Deferred[IO, JobService.JobResult]) = IO {
     val jobService = mock[JobService]
     val logger     = mock[Logger]
     when:

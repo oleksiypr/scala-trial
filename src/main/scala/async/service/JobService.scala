@@ -6,6 +6,7 @@ import java.util.UUID
 
 object JobService {
   case class Job(id: UUID, count: Long, query: TimeRange)
+  case class JobResult(id: UUID, processed: Long)
 }
 
 class JobService {
@@ -13,5 +14,5 @@ class JobService {
   import JobService.*
 
   def prepare(query: TimeRange): IO[Job] = IO.raiseError(???)
-  def process(job: Job): IO[Long] = IO.raiseError(???)
+  def process(job: Job): IO[JobResult] = IO.raiseError(???)
 }
