@@ -1,6 +1,6 @@
 package async.rest
 
-import async.model.TimeRange
+import async.common.{Logger, TimeRange}
 import async.service.JobService
 import cats.effect.{Deferred, IO}
 import cats.effect.testing.scalatest.AsyncIOSpec
@@ -44,12 +44,12 @@ class AsyncJobApiSpec extends AsyncWordSpec
     "initiate the job in parallel, respond with count of job items in headers" in {
 
       val test = for
-        jobResult  <- Deferred[IO, Unit]
-        jobService <- deferredSetup(jobResult)
-        api         = AsyncJobApi(jobService)
-        response   <- api.routes.orNotFound.run(request)
+        jobResult <- Deferred[IO, Unit]
+        deps      <- deferredSetup(jobResult)
+        api        = AsyncJobApi(deps.jobService, deps.logger)
+        response  <- api.routes.orNotFound.run(request)
       yield
-        (response, jobService)
+        (response, deps.jobService)
 
       test.timeoutTo(200.millis, IO.raiseError(new TimeoutException))
         .asserting: (resp, jobService) =>
@@ -59,10 +59,27 @@ class AsyncJobApiSpec extends AsyncWordSpec
           resp.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
           resp.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
     }
+
+    "notify asynchronously when the job is done" in {
+      val test = for
+        jobResult <- Deferred[IO, Unit]
+        deps      <- deferredSetup(jobResult)
+        api        = AsyncJobApi(deps.jobService, deps.logger)
+        response  <- api.routes.orNotFound.run(request)
+        _         <- jobResult.complete(())
+      yield
+        (response, deps.logger)
+
+      test.timeoutTo(200.millis, IO.raiseError(new TimeoutException))
+        .asserting: (resp, logger) =>
+          verify(logger).info(is(s"[REQ] [POST] path = /jobs: Job $jobId, 40 items completed."))
+          resp.status shouldBe Status.Accepted
+    }
   }
 
-  private def deferredSetup(jobResult: Deferred[IO, Unit]): IO[JobService] = IO {
+  private def deferredSetup(jobResult: Deferred[IO, Unit]) = IO {
     val jobService = mock[JobService]
+    val logger     = mock[Logger]
     when:
       jobService.prepare(any[TimeRange])
     .thenReturn:
@@ -73,6 +90,11 @@ class AsyncJobApiSpec extends AsyncWordSpec
     .thenReturn:
       jobResult.get
 
-    jobService
+    when:
+      logger.info(any[String])
+    .thenReturn:
+      IO.unit
+
+    (jobService = jobService, logger = logger)
   }
 }

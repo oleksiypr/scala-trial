@@ -1,8 +1,7 @@
 package async.service
 
-import async.model.TimeRange
+import async.common.TimeRange
 import cats.effect.IO
-import java.time.Instant
 import java.util.UUID
 
 object JobService {
@@ -10,9 +9,9 @@ object JobService {
 }
 
 class JobService {
-  
+
   import JobService.*
-  
+
   def prepare(query: TimeRange): IO[Job] = IO.raiseError(???)
   def process(job: Job): IO[Unit] = IO.raiseError(???)
 }

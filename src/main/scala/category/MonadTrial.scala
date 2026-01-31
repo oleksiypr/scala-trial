@@ -62,7 +62,7 @@ object MonadTrial extends App {
     def add(e: String): Option[Unit] = {
       println(s"Value to add: $e")
       id += 1
-      Option(data += (id -> e))
+      Option(data += (id -> e)).map(_ => ())
     }
 
     def get(id: Int): Option[String] = {

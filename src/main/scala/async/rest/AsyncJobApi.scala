@@ -1,6 +1,6 @@
 package async.rest
 
-import async.model.TimeRange
+import async.common.{Logger, TimeRange}
 import async.service.JobService
 import cats.effect.IO
 import cats.syntax.all.*
@@ -18,7 +18,7 @@ object AsyncJobApi {
   given EntityDecoder[IO, TimeRange] = jsonOf[IO, TimeRange]
 }
 
-class AsyncJobApi(jobService: JobService) {
+class AsyncJobApi(jobService: JobService, logger: Logger) {
 
   import AsyncJobApi.given
 
@@ -27,7 +27,9 @@ class AsyncJobApi(jobService: JobService) {
       req.as[TimeRange] >>= { query =>
         for
           job  <- jobService.prepare(query)
-          _    <- jobService.process(job).start
+          _    <- jobService.process(job).flatMap((a: Unit) =>
+                    logger.info(s"[REQ] [POST] path = /jobs: Job ${job.id}, 40 items completed.")
+                  ).start
           resp <- Accepted()
         yield
           resp

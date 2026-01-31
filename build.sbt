@@ -2,7 +2,7 @@ name := "scala-trial"
 
 version := "0.1.0"
 
-scalaVersion := "3.4.2"
+scalaVersion := "3.8.1"
 
 libraryDependencies ++= Seq(
   "org.typelevel"      %% "cats-effect"         % "3.5.2",
@@ -15,7 +15,6 @@ libraryDependencies ++= Seq(
   "io.circe"           %% "circe-generic"       % "0.14.7",
   "io.circe"           %% "circe-parser"        % "0.14.7",
   "io.circe"           %% "circe-literal"       % "0.14.7",
-
 )
 
 libraryDependencies ++= Seq(
