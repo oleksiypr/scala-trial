@@ -1,6 +1,6 @@
 package async.rest
 
-import async.common.TimeRange
+import async.common.{Logger, TimeRange}
 import async.service.JobService
 import cats.effect.testing.scalatest.AsyncIOSpec
 import cats.effect.{Deferred, IO}
@@ -40,7 +40,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
     .withHeaders(`Content-Type`(MediaType.application.json))
 
   "POST /job" should {
-    " initiates the job in parallel and responds with HTTP headers immediately" in {
+    "initiates the job in parallel and responds with HTTP headers immediately" in {
 
       def checkResponse(response: Response[IO], jobService: JobService) = IO {
         response.status shouldBe Status.Accepted
@@ -50,21 +50,36 @@ class AsyncJobApiSpec extends AsyncWordSpec
 
       val test = for
         jobResult  <- Deferred[IO, Long]
-        jobService <- setup(jobResult)
-        api         = AsyncJobApi(jobService)
+        deps       <- setup(jobResult)
+        api         = AsyncJobApi(deps.jobService, deps.logger)
         response   <- api.routes.orNotFound.run(request).timeout(100.millis)
-        assertion  <- checkResponse(response, jobService)
-        _          <- IO(verify(jobService).prepare(is(query)))
-        _          <- IO(verify(jobService).process(is(job)))
+        assertion  <- checkResponse(response, deps.jobService)
+        _          <- IO(verify(deps.jobService).prepare(is(query)))
+        _          <- IO(verify(deps.jobService).process(is(job)))
       yield
         assertion
 
       test
     }
+
+    "log job result asynchronously when job completes" in {
+      for
+        jobResult  <- Deferred[IO, Long]
+        deps       <- setup(jobResult)
+        api         = AsyncJobApi(deps.jobService, deps.logger)
+        response   <- api.routes.orNotFound.run(request).timeout(100.millis)
+        assertion  <- IO(response.status shouldBe Status.Accepted)
+        _          <- IO(verify(deps.jobService).process(is(job)))
+        _          <- jobResult.complete(40L)
+        _          <- IO(verify(deps.logger).info(is("Async POST /jobs is done")))
+      yield
+        assertion
+    }
   }
 
   private def setup(jobResult: Deferred[IO, Long]) = IO {
     val jobService = mock[JobService]
+    val logger     = mock[Logger]
     when:
       jobService.prepare(any[TimeRange])
     .thenReturn:
@@ -75,6 +90,11 @@ class AsyncJobApiSpec extends AsyncWordSpec
     .thenReturn:
       jobResult.get
 
-    jobService
+    when:
+      logger.info(any[String])
+    .thenReturn:
+      IO.unit
+
+    (jobService = jobService, logger = logger)
   }
 }
