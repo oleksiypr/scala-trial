@@ -2,7 +2,7 @@ package async.rest
 
 import async.common.TimeRange
 import async.service.JobService
-import cats.effect.IO
+import cats.effect.{Deferred, IO}
 import cats.effect.testing.scalatest.AsyncIOSpec
 import cats.syntax.all.*
 import io.circe.literal.*
@@ -39,22 +39,24 @@ class AsyncJobApiSpec extends AsyncWordSpec
     .withHeaders(`Content-Type`(MediaType.application.json))
 
   "POST /job" should {
-    "process the job, returns count and location of job items in headers" in {
+    "process the job and then responds withe HTTP headers (synchronously)" in {
 
-      val test = for
+      def checkResponse(response: Response[IO], jobService: JobService) = IO {
+        response.status shouldBe Status.Accepted
+        verify(jobService).prepare(is(query))
+        verify(jobService).process(is(job))
+        response.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
+        response.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
+      }
+
+      for
+        jobResul   <- Deferred[IO, Long]
         jobService <- setup()
         api         = AsyncJobApi(jobService)
         response   <- api.routes.orNotFound.run(request)
+        assertion  <- checkResponse(response, jobService)
       yield
-        (response, jobService)
-
-      test
-        .asserting: (resp, jobService) =>
-          resp.status shouldBe Status.Accepted
-          verify(jobService).prepare(is(query))
-          verify(jobService).process(is(job))
-          resp.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
-          resp.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
+        assertion
     }
   }
 
@@ -68,7 +70,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
     when:
       jobService.process(any[JobService.Job])
     .thenReturn:
-      IO.unit
+      IO.pure(40L)
 
     jobService
   }

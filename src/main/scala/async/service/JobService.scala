@@ -13,5 +13,5 @@ class JobService {
   import JobService.*
 
   def prepare(query: TimeRange): IO[Job] = IO.raiseError(???)
-  def process(job: Job): IO[Unit] = IO.raiseError(???)
+  def process(job: Job): IO[Long] = IO.raiseError(???)
 }
