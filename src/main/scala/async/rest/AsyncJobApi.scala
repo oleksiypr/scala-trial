@@ -18,7 +18,7 @@ object AsyncJobApi {
   given EntityDecoder[IO, TimeRange] = jsonOf[IO, TimeRange]
 }
 
-class AsyncJobApi(jobService: JobService, logger: Logger) {
+class AsyncJobApi(jobService: JobService) {
 
   import AsyncJobApi.given
 
@@ -27,9 +27,7 @@ class AsyncJobApi(jobService: JobService, logger: Logger) {
       req.as[TimeRange] >>= { query =>
         for
           job  <- jobService.prepare(query)
-          _    <- jobService.process(job).flatMap((a: Unit) =>
-                    logger.info(s"[REQ] [POST] path = /jobs: Job ${job.id}, 40 items completed.")
-                  ).start
+          _    <- jobService.process(job)
           resp <- Accepted()
         yield
           resp

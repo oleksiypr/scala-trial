@@ -1,8 +1,8 @@
 package async.rest
 
-import async.common.{Logger, TimeRange}
+import async.common.TimeRange
 import async.service.JobService
-import cats.effect.{Deferred, IO}
+import cats.effect.IO
 import cats.effect.testing.scalatest.AsyncIOSpec
 import cats.syntax.all.*
 import io.circe.literal.*
@@ -17,8 +17,6 @@ import org.scalatest.wordspec.AsyncWordSpec
 import org.scalatestplus.mockito.MockitoSugar
 import java.time.Instant
 import java.util.UUID
-import java.util.concurrent.TimeoutException
-import scala.concurrent.duration.DurationInt
 
 class AsyncJobApiSpec extends AsyncWordSpec
   with AsyncIOSpec with Matchers with MockitoSugar {
@@ -41,17 +39,16 @@ class AsyncJobApiSpec extends AsyncWordSpec
     .withHeaders(`Content-Type`(MediaType.application.json))
 
   "POST /job" should {
-    "initiate the job in parallel, respond with count of job items in headers" in {
+    "process the job, returns count and location of job items in headers" in {
 
       val test = for
-        jobResult <- Deferred[IO, Unit]
-        deps      <- deferredSetup(jobResult)
-        api        = AsyncJobApi(deps.jobService, deps.logger)
-        response  <- api.routes.orNotFound.run(request)
+        jobService <- setup()
+        api         = AsyncJobApi(jobService)
+        response   <- api.routes.orNotFound.run(request)
       yield
-        (response, deps.jobService)
+        (response, jobService)
 
-      test.timeoutTo(200.millis, IO.raiseError(new TimeoutException))
+      test
         .asserting: (resp, jobService) =>
           resp.status shouldBe Status.Accepted
           verify(jobService).prepare(is(query))
@@ -59,27 +56,10 @@ class AsyncJobApiSpec extends AsyncWordSpec
           resp.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
           resp.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
     }
-
-    "notify asynchronously when the job is done" in {
-      val test = for
-        jobResult <- Deferred[IO, Unit]
-        deps      <- deferredSetup(jobResult)
-        api        = AsyncJobApi(deps.jobService, deps.logger)
-        response  <- api.routes.orNotFound.run(request)
-        _         <- jobResult.complete(())
-      yield
-        (response, deps.logger)
-
-      test.timeoutTo(200.millis, IO.raiseError(new TimeoutException))
-        .asserting: (resp, logger) =>
-          verify(logger).info(is(s"[REQ] [POST] path = /jobs: Job $jobId, 40 items completed."))
-          resp.status shouldBe Status.Accepted
-    }
   }
 
-  private def deferredSetup(jobResult: Deferred[IO, Unit]) = IO {
+  private def setup() = IO {
     val jobService = mock[JobService]
-    val logger     = mock[Logger]
     when:
       jobService.prepare(any[TimeRange])
     .thenReturn:
@@ -88,13 +68,8 @@ class AsyncJobApiSpec extends AsyncWordSpec
     when:
       jobService.process(any[JobService.Job])
     .thenReturn:
-      jobResult.get
-
-    when:
-      logger.info(any[String])
-    .thenReturn:
       IO.unit
 
-    (jobService = jobService, logger = logger)
+    jobService
   }
 }
