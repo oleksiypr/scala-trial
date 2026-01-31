@@ -27,7 +27,7 @@ class AsyncJobApi(jobService: JobService) {
       req.as[TimeRange] >>= { query =>
         for
           job  <- jobService.prepare(query)
-          _    <- jobService.process(job)
+          _    <- jobService.process(job).start
           resp <- Accepted()
         yield
           resp

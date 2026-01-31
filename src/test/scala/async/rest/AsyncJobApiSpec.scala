@@ -40,7 +40,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
     .withHeaders(`Content-Type`(MediaType.application.json))
 
   "POST /job" should {
-    "responds with HTTP headers and do the job synchronously" in {
+    " initiates the job in parallel and responds with HTTP headers immediately" in {
 
       def checkResponse(response: Response[IO], jobService: JobService) = IO {
         response.status shouldBe Status.Accepted
@@ -49,9 +49,10 @@ class AsyncJobApiSpec extends AsyncWordSpec
       }
 
       val test = for
-        jobService <- setup()
+        jobResult  <- Deferred[IO, Long]
+        jobService <- setup(jobResult)
         api         = AsyncJobApi(jobService)
-        response   <- api.routes.orNotFound.run(request)
+        response   <- api.routes.orNotFound.run(request).timeout(100.millis)
         assertion  <- checkResponse(response, jobService)
         _          <- IO(verify(jobService).prepare(is(query)))
         _          <- IO(verify(jobService).process(is(job)))
@@ -62,7 +63,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
     }
   }
 
-  private def setup() = IO {
+  private def setup(jobResult: Deferred[IO, Long]) = IO {
     val jobService = mock[JobService]
     when:
       jobService.prepare(any[TimeRange])
@@ -72,7 +73,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
     when:
       jobService.process(any[JobService.Job])
     .thenReturn:
-      IO.pure(40L)
+      jobResult.get
 
     jobService
   }
