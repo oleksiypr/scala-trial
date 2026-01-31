@@ -54,8 +54,8 @@ class AsyncJobApiSpec extends AsyncWordSpec
         api         = AsyncJobApi(deps.jobService, deps.logger)
         response   <- api.routes.orNotFound.run(request).timeout(200.millis)
         assertion  <- checkResponse(response, deps.jobService)
-        _          <- IO(verify(deps.jobService).prepare(is(query)))
-        _          <- IO(verify(deps.jobService).process(is(job)))
+        _          <- verifyIO(deps.jobService)(_.prepare(is(query)))
+        _          <- verifyIO(deps.jobService)(_.process(is(job)))
       yield
         assertion
 
@@ -64,18 +64,21 @@ class AsyncJobApiSpec extends AsyncWordSpec
 
     "log job result asynchronously when job completes" in {
       for
-        jobResult  <- Deferred[IO, Long]
-        deps       <- setup(jobResult)
-        api         = AsyncJobApi(deps.jobService, deps.logger)
-        response   <- api.routes.orNotFound.run(request).timeout(100.millis)
-        assertion  <- IO(response.status shouldBe Status.Accepted)
-        _          <- jobResult.complete(40L)
-        _          <- IO(verify(deps.logger, timeout(100).atLeastOnce())
-                        .info(is(s"[Async] [POST] [/jobs] id: $jobId, items processed: 40")))
+        jobResult <- Deferred[IO, Long]
+        deps      <- setup(jobResult)
+        api        = AsyncJobApi(deps.jobService, deps.logger)
+        response  <- api.routes.orNotFound.run(request).timeout(100.millis)
+        assertion <- IO(response.status shouldBe Status.Accepted)
+        _         <- jobResult.complete(40L)
+        _         <- verifyIO(deps.logger):
+                      _.info(is(s"[Async] [POST] [/jobs] id: $jobId, items processed: 40"))
       yield
         assertion
     }
   }
+
+  private def verifyIO[R, A](r: R)(f: R => A): IO[A] =
+    IO(verify(r, timeout(100).times(1))).map(f)
 
   private def setup(jobResult: Deferred[IO, Long]) = IO {
     val jobService = mock[JobService]
