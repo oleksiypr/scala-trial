@@ -6,6 +6,8 @@ target
 .classpath
 .bloop
 */.bloop
+project/.bloop
+project/.bloop/
 .metals
 .vscode
 .gradle
