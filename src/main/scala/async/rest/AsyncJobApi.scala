@@ -27,10 +27,7 @@ class AsyncJobApi(jobService: JobService, logger: Logger) {
       req.as[TimeRange] >>= { query =>
         for
           job  <- jobService.prepare(query)
-          _    <- jobService.process(job)
-                    .flatMap(result => {
-                      logger.info(s"[Async] [POST] [/jobs] id: ${result.id}, items processed: ${result.processed}")
-                    }).start
+          _    <- jobService.process(job).flatMap(postProcess).start
           resp <- Accepted()
         yield
           resp
@@ -38,4 +35,6 @@ class AsyncJobApi(jobService: JobService, logger: Logger) {
             .putHeader(`X-Total-Count`(job.count))
       }
 
+  private inline def postProcess(inline result: JobService.JobResult) = 
+    logger.info(s"[Async] [POST] [/jobs] id: ${result.id}, items processed: ${result.processed}")
 }
