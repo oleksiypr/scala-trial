@@ -40,7 +40,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
     .withHeaders(`Content-Type`(MediaType.application.json))
 
   "POST /job" should {
-    "responds with HTTP headers" in {
+    "responds with HTTP headers and do the job synchronously" in {
 
       def checkResponse(response: Response[IO], jobService: JobService) = IO {
         response.status shouldBe Status.Accepted
@@ -51,8 +51,10 @@ class AsyncJobApiSpec extends AsyncWordSpec
       val test = for
         jobService <- setup()
         api         = AsyncJobApi(jobService)
-        response   <- api.routes.orNotFound.run(request).timeout(100.millis)
+        response   <- api.routes.orNotFound.run(request)
         assertion  <- checkResponse(response, jobService)
+        _          <- IO(verify(jobService).prepare(is(query)))
+        _          <- IO(verify(jobService).process(is(job)))
       yield
         assertion
 

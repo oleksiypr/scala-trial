@@ -5,6 +5,7 @@ target
 .mock
 .classpath
 .bloop
+*/.bloop
 .metals
 .vscode
 .gradle
