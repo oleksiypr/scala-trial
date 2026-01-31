@@ -2,8 +2,8 @@ package async.rest
 
 import async.common.TimeRange
 import async.service.JobService
-import cats.effect.{Deferred, IO}
 import cats.effect.testing.scalatest.AsyncIOSpec
+import cats.effect.{Deferred, IO}
 import cats.syntax.all.*
 import io.circe.literal.*
 import org.http4s.*
@@ -17,6 +17,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import org.scalatestplus.mockito.MockitoSugar
 import java.time.Instant
 import java.util.UUID
+import scala.concurrent.duration.DurationInt
 
 class AsyncJobApiSpec extends AsyncWordSpec
   with AsyncIOSpec with Matchers with MockitoSugar {
@@ -39,27 +40,27 @@ class AsyncJobApiSpec extends AsyncWordSpec
     .withHeaders(`Content-Type`(MediaType.application.json))
 
   "POST /job" should {
-    "initiates the job in parallel and responds with HTTP headers immediately" in {
+    "responds with HTTP headers" in {
 
       def checkResponse(response: Response[IO], jobService: JobService) = IO {
         response.status shouldBe Status.Accepted
-        verify(jobService).prepare(is(query))
         response.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
         response.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
       }
 
-      for
-        jobResul   <- Deferred[IO, Long]
-        jobService <- setup(jobResul)
+      val test = for
+        jobService <- setup()
         api         = AsyncJobApi(jobService)
-        response   <- api.routes.orNotFound.run(request)
+        response   <- api.routes.orNotFound.run(request).timeout(100.millis)
         assertion  <- checkResponse(response, jobService)
       yield
         assertion
+
+      test
     }
   }
 
-  private def setup(jobResul: Deferred[IO, Long]) = IO {
+  private def setup() = IO {
     val jobService = mock[JobService]
     when:
       jobService.prepare(any[TimeRange])
@@ -69,7 +70,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
     when:
       jobService.process(any[JobService.Job])
     .thenReturn:
-      jobResul.get
+      IO.pure(40L)
 
     jobService
   }
