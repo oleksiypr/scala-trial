@@ -28,12 +28,14 @@ class AsyncJobApi(jobService: JobService, logger: Logger) {
         for
           job  <- jobService.prepare(query)
           _    <- jobService.process(job)
-                    .flatMap(_ => logger.info("Async POST /jobs is done"))
-                    .start
+                    .flatMap(count => {
+                      logger.info(s"[Async] [POST] [/jobs] id: ${job.id}, items processed: $count")
+                    }).start
           resp <- Accepted()
         yield
           resp
             .putHeader(Location(uri"/jobs" / job.id.toString))
             .putHeader(`X-Total-Count`(job.count))
       }
+
 }

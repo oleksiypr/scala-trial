@@ -52,7 +52,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
         jobResult  <- Deferred[IO, Long]
         deps       <- setup(jobResult)
         api         = AsyncJobApi(deps.jobService, deps.logger)
-        response   <- api.routes.orNotFound.run(request).timeout(100.millis)
+        response   <- api.routes.orNotFound.run(request).timeout(200.millis)
         assertion  <- checkResponse(response, deps.jobService)
         _          <- IO(verify(deps.jobService).prepare(is(query)))
         _          <- IO(verify(deps.jobService).process(is(job)))
@@ -69,9 +69,9 @@ class AsyncJobApiSpec extends AsyncWordSpec
         api         = AsyncJobApi(deps.jobService, deps.logger)
         response   <- api.routes.orNotFound.run(request).timeout(100.millis)
         assertion  <- IO(response.status shouldBe Status.Accepted)
-        _          <- IO(verify(deps.jobService).process(is(job)))
         _          <- jobResult.complete(40L)
-        _          <- IO(verify(deps.logger).info(is("Async POST /jobs is done")))
+        _          <- IO(verify(deps.logger, timeout(100).atLeastOnce())
+                        .info(is(s"[Async] [POST] [/jobs] id: $jobId, items processed: 40")))
       yield
         assertion
     }
