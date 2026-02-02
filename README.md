@@ -70,9 +70,10 @@ libraryDependencies ++= Seq(
 ---
 
 ### 2. **First Red Test: Only Status**
-> `[AsyncRest] Added POST /jobs trivial API implementation: made test green`
 
-- Wrote a failing test for the endpoint, expecting only a 202 Accepted response (no headers yet).
+Api should return 202 Accepted response (no headers yet).
+
+- Red test:
 
 ```scala
 // Test
@@ -93,9 +94,8 @@ case req @ POST -> Root / "jobs" =>
 ---
 
 ### 3. **Add X-Total-Count Header (Trivial Implementation)**
-> `[AsyncRest] Added POST /jobs trivial API implementation: added count header`
 
-- Added a test for the X-Total-Count header.
+- Red test: add `X-Total-Count header`
 
 ```scala
 // Test
@@ -105,7 +105,7 @@ response.status shouldBe Status.Accepted
 response.headers.get(ci"X-Total-Count").map(_.head.value) shouldBe Some("42")
 ```
 
-- Implementation (using for-comprehension and headers.put):
+- Implementation. Make the test green:
 
 ```scala
 case req @ POST -> Root / "jobs" =>
@@ -117,10 +117,9 @@ case req @ POST -> Root / "jobs" =>
 
 ---
 
-### 4. **Add Location Header (Trivial Implementation)**
-> `[AsyncRest] Added POST /jobs trivial API implementation: added Location header`
+### 4. **Add Location Header**
 
-- Add a test for the Location header, similar to X-Total-Count:
+- Red test: add `Location` header with job ID
 
 ```scala
 // Test
@@ -133,7 +132,7 @@ response.headers.get(ci"X-Total-Count").map(_.head.value) shouldBe Some("42")
 response.headers.get(ci"Location").map(_.head.value)  shouldBe Some(s"/jobs/$jobId")
 ```
 
-- Implementation (using for-comprehension and resp.headers.put):
+- Make it green:
 
 ```scala
 import org.typelevel.ci.*
@@ -149,12 +148,86 @@ case req @ POST -> Root / "jobs" =>
 
 ---
 
-### 5. **Add TimeRange Query Parameters for Job Counting**
-> `[AsyncRest] Add TimeRange parameters to POST /jobs for job counting`
+### 5. **Refactor: Remove Duplication by Using Standard Library to Extract Headers**
 
-- Test: use a JSON body to provide a time range for job counting.
+The `Location` header is form `http4s` is a standard library class:
 
 ```scala
+object Location {
+  ...
+  
+  implicit val headerInstance: Header[Location, Header.Single] =
+    Header.create(
+      ci"Location",
+      _.uri.toString,
+      parse,
+    )
+}
+final case class Location(uri: Uri)
+```
+
+- This gives us the advantage of type-safe header extraction:
+
+```scala
+response.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
+```
+
+To achieve the same for `X-Total-Count`, a custom header class is defined:
+
+```scala
+import cats.effect.IO
+import org.http4s.{Header, ParseResult, Response}
+import org.typelevel.ci.*
+
+final case class `X-Total-Count`(count: Long)
+
+object `X-Total-Count` {
+  given Header[`X-Total-Count`, Header.Single] =
+    Header.create(
+      ci"X-Total-Count",
+      _.count.toString,
+      s => ParseResult.fromTryCatchNonFatal("Invalid X-Total-Count")(
+        `X-Total-Count`(s.toLong)
+      )
+    )
+}
+
+extension (response: Response[IO])
+  def putHeader[T: [t] =>> Header[t, ?]](header: T): Response[IO] =
+    response.putHeaders(header)
+```
+
+Now, we can extract both headers in a type-safe way:
+
+```scala
+response.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
+response.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
+```
+
+We can also use the convenient `putHeader` extension methods to add type-safe headers to the response:
+
+```scala
+case req @ POST -> Root / "jobs" =>
+  req.as[TimeRange] >>= { query =>
+    for
+      resp <- Accepted()
+    yield
+      resp
+        .putHeader(Location(uri"/jobs" / "48bf7b76-00aa-4583-b8d6-d63c1830696f")
+        .putHeader(`X-Total-Count`(42L))
+  }
+```
+
+This approach works seamlessly with both standard and custom header types, making the code concise and type-safe.
+
+---
+
+### 6. **Add TimeRange Query Parameters for Job preparation**
+> `[AsyncRest] Add TimeRange parameters to POST /jobs for job counting`
+
+```scala
+val jobId = UUID.fromString("48bf7b76-00aa-4583-b8d6-d63c1830696f")
+
 val jobRequest =
   json"""
   {
@@ -167,42 +240,29 @@ val request = Request[IO](Method.POST, uri"/jobs")
   .withHeaders(`Content-Type`(MediaType.application.json))
 
 response.status shouldBe Status.Accepted
-response.headers.get(ci"X-Total-Count").map(_.head.value) shouldBe Some("42")
-response.headers.get(ci"Location").map(_.head.value)  shouldBe Some(s"/jobs/$jobId")
+response.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
+response.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
 ```
 
-- This step introduces the TimeRange abstraction, allowing the API to assess the amount of work to be processed for the required period. The actual verification of jobService.count invocation comes in the next step.
-
----
-
-### 6. **Refactor: Remove Duplication by Using Standard Library to Extract Headers**
-> `[AsyncRest] Refactor to use standard http4s/case-insensitive library for header extraction`
-
-- Refactor tests to use standard http4s/case-insensitive library for extracting headers, instead of manual string matching or custom logic.
-
+- Implementation:
 ```scala
-import org.typelevel.ci.*
+package async.common
 
-response.headers.get(ci"X-Total-Count").map(_.head.value) shouldBe Some("42")
-response.headers.get(ci"Location").map(_.head.value) shouldBe Some(s"/jobs/$jobId")
+import java.time.Instant
+
+case class TimeRange(from: Instant, to: Instant)
 ```
 
-- This makes the tests more idiomatic and robust, leveraging the http4s and Typelevel libraries for header handling.
+This step introduces the `TimeRange` type, allowing the API to assess the amount of work to be processed for the required period. 
 
----
-
-### 7. **Refactor: Remove Duplication by Introducing count Method (TDD Baby Steps)**
+### 7. **Using JobService**
 
 #### 7.1. **Add JobService Mock**
-> `[AsyncRest] Add jobService mock for API`
-
 ```scala
-val jobService = mock[JobService]
+val jobService = mock[JobService] // this will not compile
 ```
 
-#### 7.2. **Add JobService Class**
-> `[AsyncRest] Add JobService class (compilation fails if not present)`
-
+- Implementation:
 ```scala
 class JobService {}
 ```
@@ -212,10 +272,8 @@ class JobService {}
 
 ```scala
 val jobService = mock[JobService]
-val api = AsyncJobApi(jobService) // this will not compile, thus the test is red
+val api        = AsyncJobApi(jobService) // this will not compile, thus the test is red
 ```
-
-- **Implementation:**
 
 To make the test compile, add a constructor parameter to `AsyncJobApi`:
 
@@ -227,11 +285,10 @@ class AsyncJobApi(jobService: JobService) {
 
 ---
 
-#### 7.4. **Setup Mock for prepare**
-> `[AsyncRest] Setup mock for jobService.prepare (test is red)`
+#### 7.4. **Setup Mock for preparing the job**
 
 ```scala
-val job = Job(id = JobId.random, count = 42L) // Example job instance for the mock
+val job = Job(jobId, count = 42L) 
 when(jobService.prepare(any[TimeRange])).thenReturn(IO.pure(job))
 ```
 
@@ -242,127 +299,86 @@ To make this compile, add the `prepare` method to `JobService`:
 ```scala
 class JobService {
   def prepare(range: TimeRange): IO[Job] = ???
-  // ...existing code...
 }
 ```
 
 ---
 
-#### 7.5. **Add Verification for count (test is red)**
-> `[AsyncRest] Add verification for jobService.count (test is red)`
+#### 7.5. **Add Verification of `prepare` (test is red)**
 
 ```scala
-verify(jobService).count(is(from), is(to)) // test is red
+val query = TimeRange(from, to)
+verify(jobService).prepare(query) // test is red because prepare is not invoked yet
 ```
 
-#### 7.6. **Invoke count in the code (test is green)**
-> `[AsyncRest] Invoke jobService.count in API (test is green)`
+#### 7.6. **Invoke `prepare` in the code (test is green)**
+
 
 ```scala
 case req @ POST -> Root / "jobs" =>
-  req.as[TimeRange].flatMap { query =>
-    jobService.count(query.from, query.to).flatMap { count =>
-      Accepted().putHeader(Header.Raw(CIString("X-Total-Count"), count.toString))
+    req.as[TimeRange] >>= { query =>
+      for
+        job  <- jobService.prepare(query)
+        resp <- Accepted()
+      yield
+        resp
+          .putHeader(Location(uri"/jobs" / job.id.toString))
+          .putHeader(`X-Total-Count`(job.count))
     }
-  }
 ```
-
 ---
 
-### 8. **Add Location Header and Service Layer**
-> `[AsyncRest] Refactor AsyncJobApi: rename count to prepare, add Job model, and update POST /jobs logic and tests`
+### 8. **Sequentially Prepare and Then Process Job**
 
-- Test: check Location header and X-Total-Count.
+- The API is extended to first call `prepare` on the job service, then `process` the returned job, and finally respond.
+- The test is updated to verify both `prepare` and `process` are called in sequence.
 
-```scala
-response.headers.get(Location) should not be empty
-response.headers.get(`X-Total-Count`).map(_.value) shouldBe Some("42")
-```
 
-- Implementation: prepare job, process job, return Location and count headers.
+- Red test (all together from the above steps) + verification of `process` calls
 
 ```scala
-case req @ POST -> Root / "jobs" =>
-  req.as[TimeRange].flatMap { query =>
-    for {
-      job  <- jobService.prepare(query)
-      _    <- jobService.process(job).start
-      resp <- Accepted()
-    } yield resp
-      .putHeader(Location(uri"/jobs" / job.id.toString))
-      .putHeader(`X-Total-Count`(job.count))
+"POST /jobs should prepare and then process job" in {
+  val jobService = mock[JobService]
+  val job = Job(id = JobId.random, count = 42L)
+  val query = TimeRange(from, to)
+  
+  when(jobService.prepare(query)).thenReturn(IO.pure(job))
+  when(jobService.process(job)).thenReturn(IO.unit)
+
+  val api      = AsyncJobApi(jobService)
+  val request  = Request[IO](Method.POST, uri"/jobs").withEntity(jobRequestJson)
+  val response = api.routes.orNotFound.run(request)
+
+  response.asserting { resp =>
+    verify(jobService).prepare(is(from), is(to))
+    verify(jobService).process(job)
+    resp.status shouldBe Status.Accepted
+    resp.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / job.id.toString).some
+    resp.headers.get[`X-Total-Count`].map(_.count) shouldBe 42L.some
   }
-```
-
----
-
-### 9. **First Red Test and Minimal Implementation**
-> `[AsyncRest] POST /jobs returns Accepted and sets headers`
-
-- Wrote a failing test for the POST /jobs endpoint, expecting a 202 Accepted response and headers.
-
-```scala
-// Test
-"POST /jobs returns Accepted and sets headers" in {
-  val request = Request[IO](Method.POST, uri"/jobs")
-    .withEntity(json"""{"from": "2026-01-21T12:11:00Z", "to": "2026-01-28T17:05:00Z"}""")
-    .withHeaders(`Content-Type`(MediaType.application.json))
-  val response = httpApp.run(request).unsafeRunSync()
-  response.status shouldBe Status.Accepted
-  response.headers.get(Location) should not be empty
-  response.headers.get(`X-Total-Count`).map(_.value) shouldBe Some("42")
 }
 ```
 
-- Implemented the minimal code to make it green.
-
+- Now it is straightforward to make it green: 
 ```scala
-case req @ POST -> Root / "jobs" =>
-  req.as[TimeRange].flatMap { query =>
-    Accepted()
-      .putHeader(Location(uri"/jobs" / "some-id"))
-      .putHeader(Header.Raw(CIString("X-Total-Count"), "42"))
-  }
-```
-
----
-
-### 10. **Add Service Layer and Realistic Job Handling**
-> `[AsyncRest] POST /jobs prepares and processes job, returns headers`
-
-- Added service logic for job preparation and processing, and updated tests to verify service interactions.
-
-```scala
-// Test
-"POST /jobs prepares and processes job" in {
-  for {
-    jobResult <- Deferred[IO, JobResult]
-    deps      <- setup(jobResult)
-    api        = AsyncJobApi(deps.jobService, deps.logger)
-    response  <- api.routes.orNotFound.run(request).timeout(100.millis)
-    assertion <- checkResponse(response)
-    _         <- verifyIO(deps.jobService)(_.prepare(is(query)))
-    _         <- verifyIO(deps.jobService)(_.process(is(job)))
-  } yield assertion
+// In AsyncJobApi
+val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
+  case req @ POST -> Root / "jobs" =>
+    req.as[JobRequest].flatMap { jobRequest =>
+      for {
+        job <- jobService.prepare(jobRequest.from, jobRequest.to)
+        _   <- jobService.process(job)
+        resp <- Accepted()
+      } yield resp
+        .putHeader(Location(uri"/jobs" / job.id.toString))
+        .putHeader(`X-Total-Count`(job.count))
+    }
 }
 ```
 
-```scala
-case req @ POST -> Root / "jobs" =>
-  req.as[TimeRange].flatMap { query =>
-    for {
-      job  <- jobService.prepare(query)
-      _    <- jobService.process(job).start
-      resp <- Accepted()
-    } yield resp
-      .putHeader(Location(uri"/jobs" / job.id.toString))
-      .putHeader(`X-Total-Count`(job.count))
-  }
-```
-
 ---
 
-### 11. **Asynchronous Logging on Job Completion**
+### 9. **Asynchronous Logging on Job Completion**
 > `[AsyncRest] log job result asynchronously when job completes`
 
 - Added a logger to notify when the job is done, and updated tests to verify this behavior.
@@ -402,7 +418,7 @@ case req @ POST -> Root / "jobs" =>
 
 ---
 
-### 12. **Test Refactoring and Helper Extraction**
+### 10. **Test Refactoring and Helper Extraction**
 > `[AsyncRest] Replace direct verify calls with verifyIO in AsyncJobApiSpec to simplify verification logic and improve readability`
 
 - Refactored tests to reduce duplication and made verification effectful and idiomatic.
@@ -414,7 +430,7 @@ def verifyIO[R, A](r: R)(f: R => A): IO[A] =
 
 ---
 
-### 13. **API and Model Refinement**
+### 11. **API and Model Refinement**
 > `[AsyncRest] Update JobService to return JobResult instead of Long and adapt AsyncJobApi and tests accordingly`
 
 - Improved the API by returning a richer result type, updating both implementation and tests.
@@ -429,7 +445,7 @@ def verifyIO[R, A](r: R)(f: R => A): IO[A] =
 class AsyncJobApi(jobService: JobService, logger: Logger) {
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO]:
     case req @ POST -> Root / "jobs" =>
-      req.as[TimeRange] >>= { query =>
+      req.as[JobRequest] >>= { query =>
         for
           job  <- jobService.prepare(query)
           _    <- jobService.process(job).flatMap(postProcess).start
