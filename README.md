@@ -1,9 +1,9 @@
 # scala-trial
-This repository contains different Scala related small projects: experiments, trial projects, code samples. 
+This repository contains various Scala-related small projects: experiments, trial projects, and code samples.
 
 # AsyncJobApi: TDD Journey and Asynchronous REST Design
 
-This article documents the iterative, test-driven development (TDD) process for building the `AsyncJobApi` and its test suite, as well as the design of the asynchronous REST API. It includes a mermaid sequence diagram, code snippets, and commit-driven commentary.
+This article documents the iterative, test-driven development (TDD) process for building the `AsyncJobApi` and its test suite, as well as the design of the asynchronous REST API. It is split into two major parts: **Synchronous Job Processing** and **Asynchronous (Parallel) Job Processing**. The approach demonstrates how to first implement and test a sequential solution, and then evolve it to a parallel solution by adding new tests and implementation only when needed and possible.
 
 ---
 
@@ -29,7 +29,8 @@ sequenceDiagram
 ## Table of Contents
 - [Async REST Call: Sequence Diagram](#async-rest-call-sequence-diagram)
 - [Background](#background)
-- [TDD Iterations: Commit-by-Commit](#tdd-iterations-commit-by-commit)
+- [Synchronous Job Processing](#synchronous-job-processing)
+- [Asynchronous (Parallel) Job Processing](#asynchronous-parallel-job-processing)
 - [Key Code Snippets](#key-code-snippets)
 - [Summary](#summary)
 
@@ -37,11 +38,36 @@ sequenceDiagram
 
 ## Background
 
-The goal: implement an HTTP API for asynchronous job processing using Scala 3, Cats Effect, http4s, and Circe, with robust effectful testing using ScalaTest and Mockito.
+The goal: implement an HTTP API for asynchronous job processing using Scala 3.8 syntax, Cats Effect, http4s, and Circe, with robust effectful testing using ScalaTest and Mockito.
+
+- **Scala 3.8 Syntax:**
+  - Uses the new `:` notation for higher-order functions (HOFs) and control structures where concise, but retains `{}` braces for longer code blocks or where clarity is needed.
+- **Deferred as a Crucial Component:**
+  - The Cats Effect `Deferred` primitive is essential for this feature. It enables precise control over asynchronous job completion and test synchronization, allowing tests to deterministically verify background processing and notification logic.
+- **Assumptions:**
+  - The API is designed for demonstration and educational purposes, not for production use.
+  - The job processing logic is abstracted and mocked for testing; real-world integrations (e.g., database, external services) are not included.
+  - The API is stateless and does not persist job state beyond the scope of the test.
+- **Restrictions:**
+  - No authentication, authorization, or rate limiting is implemented.
+  - Error handling is minimal and focused on the TDD process, not on comprehensive API robustness.
+  - The solution assumes a single-node, in-memory execution model (no clustering or distributed job management).
 
 ---
 
-## TDD Iterations: Commit-by-Commit
+## Synchronous Job Processing
+
+The initial implementation and TDD process focus on a sequential (synchronous) solution. This approach is simple, easy to reason about, and provides a solid foundation for correctness before introducing parallelism.
+
+### Idea
+- **Start with a sequential solution:**
+  - Implement the API so that job preparation and processing happen in sequence, and the response is sent only after the job is fully processed.
+  - Write tests that expect the response only after all work is done.
+- **Advantages:**
+  - Simpler to implement and test.
+  - Ensures correctness and clarity before introducing concurrency.
+
+### TDD Steps (Sequential)
 
 ### 1. **Project Setup and Library Addition**
 
@@ -61,8 +87,8 @@ libraryDependencies ++= Seq(
   "io.circe"           %% "circe-literal"                 % "0.14.7",
   "org.scalatest"      %% "scalatest"                     % "3.2.18"   % Test,
   "org.scalacheck"     %% "scalacheck"                    % "1.17.0"   % Test,
-  "org.scalatestplus"  %% "mockito-4-11"                   % "3.2.18.0" % Test,
-  "org.typelevel"      %% "cats-effect-testing-scalatest"  % "1.7.0"    % Test,
+  "org.scalatestplus"  %% "mockito-4-11"                  % "3.2.18.0" % Test,
+  "org.typelevel"      %% "cats-effect-testing-scalatest" % "1.7.0"    % Test,
 )
 ```
 
@@ -70,30 +96,29 @@ libraryDependencies ++= Seq(
 
 ### 2. **First Red Test: Only Status**
 
-Api should return 202 Accepted response (no headers yet).
-
-- Red test:
+The API should return a 202 Accepted response (no headers yet).
 
 ```scala
 val request = Request[IO](Method.HEAD, uri"/jobs")
 val api = new AsyncJobApi // this will not compile since AsyncJobApi is not defined yet
-
 ```
 
 - Minimal implementation to make it green:
 
 ```scala
 class AsyncJobApi {
+  // ...implementation...
+}
 ```
+
 - Red test:
 
 ```scala
-
 "POST /jobs returns Accepted" in {
   val request = Request[IO](Method.POST, uri"/jobs")
   val api = new AsyncJobApi
   api.routes.orNotFound.run(request).asserting { response =>
-    response.status shouldBe Status.Accepted
+    verify(jobService).prepare(query)
   }
 }
 ```
@@ -101,15 +126,16 @@ class AsyncJobApi {
 - Make it green:
 
 ```scala
-val routes: HttpRoutes[IO] = HttpRoutes.of[IO]: 
+val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
   case req @ POST -> Root / "jobs" => Accepted()
+}
 ```
 
 ---
 
 ### 3. **Add X-Total-Count Header (Trivial Implementation)**
 
-- Red test: add `X-Total-Count header` (here I specify only `asserting` code segment)
+- Red test: add `X-Total-Count` header (only the assertion is shown)
 
 ```scala
 import org.typelevel.ci.*
@@ -120,15 +146,10 @@ response.headers.get(ci"X-Total-Count").map(_.head.value) shouldBe Some("42")
 - Implementation. Make the test green:
 
 ```scala
-import org.typelevel.ci.*
-
-...
-
 case req @ POST -> Root / "jobs" =>
-  for 
+  for {
     resp <- Accepted()
-  yield 
-    resp.headers.put(Header.Raw(ci"X-Total-Count", "42"))
+  } yield resp.headers.put(Header.Raw(ci"X-Total-Count", "42"))
 ```
 
 ---
@@ -138,42 +159,33 @@ case req @ POST -> Root / "jobs" =>
 - Red test: add `Location` header with job ID
 
 ```scala
-// Test
-import org.typelevel.ci.*
-
 val jobId = UUID.fromString("48bf7b76-00aa-4583-b8d6-d63c1830696f")
-
-...
-
 response.status shouldBe Status.Accepted
 response.headers.get(ci"X-Total-Count").map(_.head.value) shouldBe Some("42")
-response.headers.get(ci"Location").map(_.head.value)  shouldBe Some(s"/jobs/$jobId")
+response.headers.get(ci"Location").map(_.head.value) shouldBe Some(s"/jobs/$jobId")
 ```
 
 - Make it green:
 
 ```scala
-import org.typelevel.ci.*
-
 case req @ POST -> Root / "jobs" =>
-  for resp <- Accepted()
-  yield 
-    resp.headers.put(
-      Header.Raw(ci"X-Total-Count", "42"),
-      Location(uri"/jobs/48bf7b76-00aa-4583-b8d6-d63c1830696f")
-    )
+  for {
+    resp <- Accepted()
+  } yield resp.headers.put(
+    Header.Raw(ci"X-Total-Count", "42"),
+    Location(uri"/jobs/48bf7b76-00aa-4583-b8d6-d63c1830696f")
+  )
 ```
 
 ---
 
 ### 5. **Refactor: Remove Duplication by Using Standard Library to Extract Headers**
 
-The `Location` header is form `http4s` is a standard library class:
+The `Location` header from `http4s` is a standard library class:
 
 ```scala
 object Location {
-  ...
-  
+  // ...
   implicit val headerInstance: Header[Location, Header.Single] =
     Header.create(
       ci"Location",
@@ -193,12 +205,7 @@ response.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
 To achieve the same for `X-Total-Count`, a custom header class is defined:
 
 ```scala
-import cats.effect.IO
-import org.http4s.{Header, ParseResult, Response}
-import org.typelevel.ci.*
-
 final case class `X-Total-Count`(count: Long)
-
 object `X-Total-Count` {
   given Header[`X-Total-Count`, Header.Single] =
     Header.create(
@@ -209,7 +216,6 @@ object `X-Total-Count` {
       )
     )
 }
-
 extension (response: Response[IO])
   def putHeader[T: [t] =>> Header[t, ?]](header: T): Response[IO] =
     response.putHeaders(header)
@@ -222,20 +228,20 @@ response.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
 response.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
 ```
 
-We can also use the convenient `putHeader` extension methods to add type-safe headers to the response:
+We can also use the convenient `putHeader` extension method to add type-safe headers to the response:
 
 ```scala
 case req @ POST -> Root / "jobs" =>
-    for
-      resp <- Accepted()
-    yield
-      resp
-        .putHeader(Location(uri"/jobs" / "48bf7b76-00aa-4583-b8d6-d63c1830696f")
-        .putHeader(`X-Total-Count`(42L))
+  for 
+    resp <- Accepted()
+  yield resp
+    .putHeader(Location(uri"/jobs/48bf7b76-00aa-4583-b8d6-d63c1830696f"))
+    .putHeader(`X-Total-Count`(42L))
 ```
 
 This approach works seamlessly with both standard and custom header types, making the code concise and type-safe.
 
+---
 
 ### 6. **Using JobService**
 
@@ -331,7 +337,9 @@ case req @ POST -> Root / "jobs" =>
 ```
 ---
 
-### 6. **Add TimeRange Query to a request body**
+### 6. **Add TimeRange Query to a Request Body**
+
+As a matter of fact, this step in the TDD process is a refactoring. According to TDD principles, refactoring is about removing duplication—including duplication between the code and the test. Initially, the parameters (`from`, `to` values) were hardcoded in both the test and the implementation to make the test green. This duplication causes the code to depend on the test: if the hardcoded values change, the implementation must be changed as well. To eliminate this dependency and make the code more robust, we want the values to be evaluated or deduced from the actual request. That is why, in this step, we refactor the API to fetch these data from the request body.
 
 ```scala
 val jobRequest =
@@ -348,7 +356,7 @@ val request = Request[IO](Method.POST, uri"/jobs")
   .withEntity(jobRequest)
   .withHeaders(`Content-Type`(MediaType.application.json))
 
-....
+...
 
 api.routes.orNotFound.run(request).asserting { response =>
   response.status shouldBe Status.Accepted
@@ -361,7 +369,7 @@ api.routes.orNotFound.run(request).asserting { response =>
 given Decoder[TimeRange] = deriveDecoder[TimeRange]
 given EntityDecoder[IO, TimeRange] = jsonOf[IO, TimeRange]
 
-....
+...
 
 val routes: HttpRoutes[IO] = HttpRoutes.of[IO]:
   case req @ POST -> Root / "jobs" =>
@@ -376,7 +384,7 @@ val routes: HttpRoutes[IO] = HttpRoutes.of[IO]:
     }
 ```
 
-This step introduces the `TimeRange` as a request body, allowing the API to assess the amount of work to be processed for the required period. 
+This step introduces the `TimeRange` as a request body, allowing the API to assess the amount of work to be processed for the required period, and removes the duplication between test and implementation by making the code independent of hardcoded test values.
 
 
 ### 7. **Sequentially Prepare and Then Process Job**
@@ -386,8 +394,8 @@ This step introduces the `TimeRange` as a request body, allowing the API to asse
 - The test is updated to verify both `prepare` and `process` are called in sequence.
 
 
-Red test (all together from the above steps) + verification of `process` calls. Re-refactoring steps were omitted as obvious:
-test code was rewritten to for-coprehension, `checkResponse` and `setup` auxilary function were introduced. 
+Red test (all together from the above steps) + verification of `process` calls. Refactoring steps were omitted as obvious:
+test code was rewritten to for-comprehension, `checkResponse` and `setup` auxilary function were introduced. 
 
 ```scala
   "POST /job" should {
@@ -397,16 +405,17 @@ test code was rewritten to for-coprehension, `checkResponse` and `setup` auxilar
         api         = AsyncJobApi(jobService)
         response   <- api.routes.orNotFound.run(jobRequest)
         assertion  <- checkResponse(response, jobService)
+        _          <- IO(verify(jobService).prepare(is(query)))
+        _          <- IO(verify(jobService).process(is(job))) // fails because `process` is not invoked yet
       yield
         assertion
     }
   }
 
   private def checkResponse(response: Response[IO], jobService: JobService) = IO {
-    ...
-    verify(jobService).prepare(is(query))
-    verify(jobService).process(is(job))
-    ...
+    response.status shouldBe Status.Accepted
+    response.headers.get(ci"X-Total-Count").map(_.head.value) shouldBe Some("42")
+    response.headers.get(ci"Location").map(_.head.value) shouldBe Some(s"/jobs/$jobId")
   }
 
   private def setup() = IO {
@@ -426,9 +435,9 @@ Now it is straightforward to make it green:
 val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
   case req @ POST -> Root / "jobs" =>
     req.as[TimeRange] >>= { query =>
-      for 
+      for
         job <- jobService.prepare(query)
-        _    <- jobService.process(job).start
+        _   <- jobService.process(job)
         resp <- Accepted()
       yield 
         resp
@@ -467,12 +476,26 @@ This refactoring improved test clarity, reduced duplication, and made effectful 
 
 ---
 
-### 8. **Asynchronous Job Processing**
+## Asynchronous (Parallel) Job Processing
+
+Once the sequential solution is correct and well-tested, the next step is to introduce parallelism. 
+This is driven by new tests that require the API to respond before the job is finished, while the job continues in the background.
+
+### Idea
+- **Evolve to a parallel solution:**
+  - Add new tests that require the API to respond immediately, even while the job is still running.
+  - Refactor the implementation to run job processing in the background and respond to the client right away.
+  - Use `Deferred` to coordinate and test asynchronous completion and notification.
+- **Advantages:**
+  - Parallelism is introduced only when justified by requirements or tests.
+  - The transition is safe and test-driven, ensuring correctness at each step.
+
+### TDD Steps (Parallel)
 
 #### 8.1. Try to add a red test: Parallel Job Processing (Test Never Ends)
 
-The test was written to check that job processing is started in parallel and the API responds immediately, but the test never ends because the Deferred is never completed.
-This is wrong because test must be either successful or failed, but it never ends.
+The test was written to check that job processing is started in parallel and the API responds immediately, but the test never ends because the `Deferred` is never completed.
+This is wrong because the test must be either successful or failed, but the test below never ends.
 
 
 ```scala
@@ -499,7 +522,9 @@ response   <- api.routes.orNotFound.run(request).timeout(200.millis)
 Now, the test fails (red) if the job is not completed, making the TDD cycle explicit.
 
 #### 8.3. Green Test: make the job run in parallel
-The implementation is updated to start job processing in the background and respond immediately. The test completes the Deferred to unblock the background job.
+The implementation is updated to start job processing in the background and respond immediately.
+
+Red test:
 
 ```scala
 "initiates the job in parallel and responds with HTTP headers immediately" in {
@@ -511,12 +536,13 @@ The implementation is updated to start job processing in the background and resp
     assertion  <- checkResponse(response)
     _          <- verifyIO(deps.jobService)(_.prepare(is(query)))
     _          <- verifyIO(deps.jobService)(_.process(is(job)))
-  yield 
+  } yield 
     assertion
 }
 ```
 
-Implementation: `.start` shits the job in the background and returns immediately.
+Make it green: `.start` shifts the job in the background and returns immediately.
+
 ```scala
 for 
   job <- jobService.prepare(query)
@@ -532,20 +558,8 @@ yield resp
 - Added a logger to notify when the job is done and updated tests to verify this behavior.
 - Used `Deferred` to simulate job completion and verify logging.
 
-
+This requires `JobService` mock to return a deferred result that is not yet ready:
 ```scala
-"log job result asynchronously when job completes" in {
-  for {
-    jobResult <- Deferred[IO, JobResult]
-    deps      <- setup(jobResult)
-    api        = AsyncJobApi(deps.jobService, deps.logger)
-    response  <- api.routes.orNotFound.run(request).timeout(100.millis)
-    assertion <- checkResponse(response)
-    _         <- jobResult.complete(JobResult(jobId, processed = 40L))
-    _         <- verifyIO(deps.logger)(_.info(is(s"[Async] [POST] [/jobs] id: $jobId, items processed: 40")))
-  } yield assertion
-}
-
 private def setup(jobResult: Deferred[IO, JobService.JobResult]) = IO {
   val jobService = mock[JobService]
   val logger     = mock[Logger]
@@ -557,15 +571,34 @@ private def setup(jobResult: Deferred[IO, JobService.JobResult]) = IO {
   when:
     jobService.process(any[JobService.Job])
   .thenReturn:
-    jobResult.get
+    jobResult.get // Returns deferred result that will be completed later
 
   when:
     logger.info(any[String])
   .thenReturn:
     IO.unit
 
-  (jobService = jobService, logger = logger)
+  (jobService = jobService, logger = logger) // Scala 3.8 named tuples
 }
+```
+
+Now, when the API responds, the job still running. When the long rinnung executiuon completes, 
+the test verifies that the logger was called.
+To emulte long-running job completion, we use `Deferred.complete`.
+
+```scala
+"log job result asynchronously when job completes" in {
+  for {
+    jobResult <- Deferred[IO, JobResult]
+    deps      <- setup(jobResult)
+    api        = AsyncJobApi(deps.jobService, deps.logger)
+    response  <- api.routes.orNotFound.run(request).timeout(100.millis) 
+    assertion <- checkResponse(response) // API responds immediately
+    _         <- jobResult.complete(JobResult(jobId, processed = 40L)) // Simulate long-running job completion
+    _         <- verifyIO(deps.logger)(_.info(is(s"[Async] [POST] [/jobs] id: $jobId, items processed: 40")))
+  } yield assertion
+}
+
 ```
 
 **Summary:**
