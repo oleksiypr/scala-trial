@@ -7,6 +7,18 @@ This article documents the iterative, test-driven development (TDD) process for 
 
 ---
 
+## Table of Contents
+- [Async REST Call: Sequence Diagram](#async-rest-call-sequence-diagram)
+- [The Solution](#the-solution)
+  - [`AsyncJobApiSpec`](#asyncjobapitspec-test-final-form)
+  - [`AsyncJobApi`](#asyncjobapifinal-form)
+- [Background](#background)
+- [Synchronous Job Processing](#synchronous-job-processing)
+- [Asynchronous (Parallel) Job Processing](#asynchronous-parallel-job-processing)
+- [Key Code Snippets](#key-code-snippets)
+- [Summary](#summary)
+
+
 ## Async REST Call: Sequence Diagram
 
 ```mermaid
@@ -24,15 +36,72 @@ sequenceDiagram
     API->>Logger: info("job done")
 ```
 
----
+## The Solution
 
-## Table of Contents
-- [Async REST Call: Sequence Diagram](#async-rest-call-sequence-diagram)
-- [Background](#background)
-- [Synchronous Job Processing](#synchronous-job-processing)
-- [Asynchronous (Parallel) Job Processing](#asynchronous-parallel-job-processing)
-- [Key Code Snippets](#key-code-snippets)
-- [Summary](#summary)
+### `AsyncJobApiSpec`  (test, final form)
+
+First things first. Directly to the point. This is how it is done. Below are the details on how we get there.
+
+```scala
+"POST /jobs" should {
+  
+  "initiates the job in parallel and responds with HTTP headers immediately" in {
+    for {
+      jobResult  <- Deferred[IO, JobResult]
+      deps       <- setup(jobResult)
+      api         = AsyncJobApi(deps.jobService, deps.logger)
+      response   <- api.routes.orNotFound.run(request).timeout(100.millis)
+      assertion  <- checkResponse(response)
+      _          <- verifyIO(deps.jobService)(_.prepare(is(query)))
+      _          <- verifyIO(deps.jobService)(_.process(is(job)))
+    } yield assertion
+  }
+  
+  "log job result asynchronously when job completes" in {
+    for {
+      jobResult <- Deferred[IO, JobResult]
+      deps      <- setup(jobResult)
+      api        = AsyncJobApi(deps.jobService, deps.logger)
+      response  <- api.routes.orNotFound.run(request).timeout(100.millis)
+      assertion <- checkResponse(response)
+      _         <- jobResult.complete(JobResult(jobId, processed = 40L))
+      _         <- verifyIO(deps.logger):
+                    _.info(is(s"[Async] [POST] [/jobs] id: $jobId, items processed: 40"))
+    } yield assertion
+  }
+
+  private def verifyIO[R, A](r: R)(f: R => A): IO[A] =
+    IO(verify(r, timeout(100).times(1))).map(f)
+
+  private def checkResponse(response: Response[IO]) = IO {
+    response.status shouldBe Status.Accepted
+    response.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
+    response.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
+  }
+}
+```
+
+### `AsyncJobApi` (final form)
+```scala
+class AsyncJobApi(jobService: JobService, logger: Logger) {
+  
+  val routes: HttpRoutes[IO] = HttpRoutes.of[IO]:
+    case req @ POST -> Root / "jobs" =>
+      req.as[JobRequest] >>= { query =>
+        for
+          job  <- jobService.prepare(query)
+          _    <- jobService.process(job).flatMap(postProcess).start
+          resp <- Accepted()
+        yield
+          resp
+            .putHeader(Location(uri"/jobs" / job.id.toString))
+            .putHeader(`X-Total-Count`(job.count))
+      }
+
+  private def postProcess(result: JobService.JobResult) =
+    logger.info(s"[Async] [POST] [/jobs] id: ${result.id}, items processed: ${result.processed}")
+}
+```
 
 ---
 
@@ -628,51 +697,3 @@ class AsyncJobApi(jobService: JobService, logger: Logger) {
 }
 ```
 
-## AsyncJobApiSpec (test, final form)
-
-First things first. Directly to the point. This is how it is done. Below are the details of how we get there.
-
-```scala
-"POST /jobs" should {
-  "initiates the job in parallel and responds with HTTP headers immediately" in {
-    for {
-      jobResult  <- Deferred[IO, JobResult]
-      deps       <- setup(jobResult)
-      api         = AsyncJobApi(deps.jobService, deps.logger)
-      response   <- api.routes.orNotFound.run(request).timeout(100.millis)
-      assertion  <- checkResponse(response)
-      _          <- verifyIO(deps.jobService)(_.prepare(is(query)))
-      _          <- verifyIO(deps.jobService)(_.process(is(job)))
-    } yield assertion
-  }
-  "log job result asynchronously when job completes" in {
-    for {
-      jobResult <- Deferred[IO, JobResult]
-      deps      <- setup(jobResult)
-      api        = AsyncJobApi(deps.jobService, deps.logger)
-      response  <- api.routes.orNotFound.run(request).timeout(100.millis)
-      assertion <- checkResponse(response)
-      _         <- jobResult.complete(JobResult(jobId, processed = 40L))
-      _         <- verifyIO(deps.logger):
-                    _.info(is(s"[Async] [POST] [/jobs] id: $jobId, items processed: 40"))
-    } yield assertion
-  }
-
-  private def verifyIO[R, A](r: R)(f: R => A): IO[A] =
-    IO(verify(r, timeout(100).times(1))).map(f)
-
-  private def checkResponse(response: Response[IO]) = IO {
-    response.status shouldBe Status.Accepted
-    response.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
-    response.headers.get[`X-Total-Count`].map(_.count) shouldBe count.some
-  }
-}
-```
-
----
-
-## Summary
-
-- The API and its tests evolved through small, test-driven steps.
-- Each commit focused on a single change: red test, green code, or refactor.
-- The final result is a robust, idiomatic, and well-tested async REST API.
