@@ -29,7 +29,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
   val to    = Instant.parse("2026-01-28T17:05:00Z")
   val query = TimeRange(from, to)
   val count = 42L
-  val job   = JobService.Job(jobId, count, query: TimeRange)
+  val job   = JobService.Job(jobId, count)
 
   val request = Request[IO](Method.POST, uri"/jobs")
     .withEntity(

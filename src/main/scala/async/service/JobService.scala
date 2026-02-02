@@ -5,7 +5,7 @@ import cats.effect.IO
 import java.util.UUID
 
 object JobService {
-  case class Job(id: UUID, count: Long, query: TimeRange)
+  case class Job(id: UUID, count: Long)
   case class JobResult(id: UUID, processed: Long)
 }
 
