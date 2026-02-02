@@ -437,9 +437,9 @@ val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     req.as[TimeRange] >>= { query =>
       for
         job <- jobService.prepare(query)
-        _   <- jobService.process(job)
+        _   <- jobService.process(job).start
         resp <- Accepted()
-      yield 
+      yield
         resp
           .putHeader(Location(uri"/jobs" / job.id.toString))
           .putHeader(`X-Total-Count`(job.count))
@@ -628,7 +628,10 @@ class AsyncJobApi(jobService: JobService, logger: Logger) {
 }
 ```
 
-### AsyncJobApiSpec (test, final form)
+## AsyncJobApiSpec (test, final form)
+
+First things first. Directly to the point. This is how it is done. Below are the details of how we get there.
+
 ```scala
 "POST /jobs" should {
   "initiates the job in parallel and responds with HTTP headers immediately" in {
