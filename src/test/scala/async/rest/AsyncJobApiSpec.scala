@@ -65,7 +65,8 @@ class AsyncJobApiSpec extends AsyncWordSpec
         api        = AsyncJobApi(deps.jobService, deps.logger)
         response  <- api.routes.orNotFound.run(request).timeout(100.millis)
         assertion <- checkResponse(response)
-        _         <- jobResult.complete(JobResult(jobId, processed = 40L))
+        success   <- jobResult.complete(JobResult(jobId, processed = 40L))
+        _         <- IO(success shouldBe true)
         _         <- verifyIO(deps.logger):
                       _.info(is(s"[Async] [POST] [/jobs] id: $jobId, items processed: 40"))
       yield
