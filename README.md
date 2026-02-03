@@ -10,8 +10,8 @@ This article documents the iterative, test-driven development (TDD) process for 
 ## Table of Contents
 - [Async REST Call: Sequence Diagram](#async-rest-call-sequence-diagram)
 - [The Solution](#the-solution)
-  - [`AsyncJobApiSpec`](#asyncjobapitspec-test-final-form)
-  - [`AsyncJobApi`](#asyncjobapifinal-form)
+  - [AsyncJobApiSpec (test, final form)](#asyncjobapispec-test-final-form)
+  - [AsyncJobApi (final form)](#asyncjobapi-final-form)
 - [Background](#background)
 - [Synchronous Job Processing](#synchronous-job-processing)
 - [Asynchronous (Parallel) Job Processing](#asynchronous-parallel-job-processing)
@@ -38,13 +38,13 @@ sequenceDiagram
 
 ## The Solution
 
-### `AsyncJobApiSpec`  (test, final form)
-
 First things first. Directly to the point. This is how it is done. Below are the details on how we get there.
+
+### AsyncJobApiSpec (test, final form)
+
 
 ```scala
 "POST /jobs" should {
-  
   "initiates the job in parallel and responds with HTTP headers immediately" in {
     for {
       jobResult  <- Deferred[IO, JobResult]
@@ -56,7 +56,6 @@ First things first. Directly to the point. This is how it is done. Below are the
       _          <- verifyIO(deps.jobService)(_.process(is(job)))
     } yield assertion
   }
-  
   "log job result asynchronously when job completes" in {
     for {
       jobResult <- Deferred[IO, JobResult]
@@ -81,13 +80,12 @@ First things first. Directly to the point. This is how it is done. Below are the
 }
 ```
 
-### `AsyncJobApi` (final form)
+### AsyncJobApi (final form)
 ```scala
 class AsyncJobApi(jobService: JobService, logger: Logger) {
-  
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO]:
     case req @ POST -> Root / "jobs" =>
-      req.as[JobRequest] >>= { query =>
+      req.as[TimeRange] >>= { query =>
         for
           job  <- jobService.prepare(query)
           _    <- jobService.process(job).flatMap(postProcess).start
@@ -165,10 +163,10 @@ libraryDependencies ++= Seq(
 
 ### 2. **First Red Test: Only Status**
 
-The API should return a 202 Accepted response (no headers yet).
+The API should return a 202 Accepted response.
 
 ```scala
-val request = Request[IO](Method.HEAD, uri"/jobs")
+val request = Request[IO](Method.POST, uri"/jobs")
 val api = new AsyncJobApi // this will not compile since AsyncJobApi is not defined yet
 ```
 
@@ -406,7 +404,7 @@ case req @ POST -> Root / "jobs" =>
 ```
 ---
 
-### 6. **Add TimeRange Query to a Request Body**
+### 7. **Add TimeRange Query to a Request Body**
 
 As a matter of fact, this step in the TDD process is a refactoring. According to TDD principles, refactoring is about removing duplication—including duplication between the code and the test. Initially, the parameters (`from`, `to` values) were hardcoded in both the test and the implementation to make the test green. This duplication causes the code to depend on the test: if the hardcoded values change, the implementation must be changed as well. To eliminate this dependency and make the code more robust, we want the values to be evaluated or deduced from the actual request. That is why, in this step, we refactor the API to fetch these data from the request body.
 
@@ -456,23 +454,23 @@ val routes: HttpRoutes[IO] = HttpRoutes.of[IO]:
 This step introduces the `TimeRange` as a request body, allowing the API to assess the amount of work to be processed for the required period, and removes the duplication between test and implementation by making the code independent of hardcoded test values.
 
 
-### 7. **Sequentially Prepare and Then Process Job**
+### 8. **Sequentially Prepare and Then Process Job**
 
-#### 7.1. **POST /job syncronously**
+**POST /job synchronously**
 - The API is extended to first call `prepare` on the job service, then `process` the returned job, and finally respond.
 - The test is updated to verify both `prepare` and `process` are called in sequence.
 
 
 Red test (all together from the above steps) + verification of `process` calls. Refactoring steps were omitted as obvious:
-test code was rewritten to for-comprehension, `checkResponse` and `setup` auxilary function were introduced. 
+test code was rewritten to for-comprehension, `checkResponse` and `setup` auxiliary function were introduced. 
 
 ```scala
   "POST /job" should {
-    "process the job and then responds withe HTTP headers (synchronously)" in {
+    "process the job and then responds with HTTP headers (synchronously)" in {
       for
         jobService <- setup()
         api         = AsyncJobApi(jobService)
-        response   <- api.routes.orNotFound.run(jobRequest)
+        response   <- api.routes.orNotFound.run(TimeRange)
         assertion  <- checkResponse(response, jobService)
         _          <- IO(verify(jobService).prepare(is(query)))
         _          <- IO(verify(jobService).process(is(job))) // fails because `process` is not invoked yet
@@ -490,7 +488,7 @@ test code was rewritten to for-comprehension, `checkResponse` and `setup` auxila
   private def setup() = IO {
     val jobService = mock[JobService]
     when(jobService.prepare(any[TimeRange])).thenReturn(IO.pure(job))
-    when(jobService.process(any[JobService.Job])).thenReturn(jobResult.get)
+    when(jobService.process(any[JobService.Job])).thenReturn(JobResult(jobId, processed = 40L))
     jobService
   }
 }
@@ -506,7 +504,7 @@ val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     req.as[TimeRange] >>= { query =>
       for
         job <- jobService.prepare(query)
-        _   <- jobService.process(job).start
+        _   <- jobService.process(job)
         resp <- Accepted()
       yield
         resp
@@ -518,7 +516,7 @@ val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
 
 ---
 
-#### 7.2. Refactor: verification functionality idiomatically 
+#### 8.2. Refactor: verification functionality idiomatically 
 
 - The `verifyIO` helper was introduced to wrap Mockito verifications in IO, making them effectful and idiomatic.
 
@@ -651,9 +649,9 @@ private def setup(jobResult: Deferred[IO, JobService.JobResult]) = IO {
 }
 ```
 
-Now, when the API responds, the job still running. When the long rinnung executiuon completes, 
+Now, when the API responds, the job still running. When the long running execution completes, 
 the test verifies that the logger was called.
-To emulte long-running job completion, we use `Deferred.complete`.
+To emulate long-running job completion, we use `Deferred.complete`.
 
 ```scala
 "log job result asynchronously when job completes" in {
@@ -682,7 +680,7 @@ These steps document the most recent TDD cycle for asynchronous job processing: 
 class AsyncJobApi(jobService: JobService, logger: Logger) {
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO]:
     case req @ POST -> Root / "jobs" =>
-      req.as[JobRequest] >>= { query =>
+      req.as[TimeRange] >>= { query =>
         for
           job  <- jobService.prepare(query)
           _    <- jobService.process(job).flatMap(postProcess).start
@@ -696,4 +694,3 @@ class AsyncJobApi(jobService: JobService, logger: Logger) {
     logger.info(s"[Async] [POST] [/jobs] id: ${result.id}, items processed: ${result.processed}")
 }
 ```
-
