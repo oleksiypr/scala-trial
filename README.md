@@ -96,7 +96,7 @@ class AsyncJobApi(jobService: JobService, logger: Logger) {
             .putHeader(`X-Total-Count`(job.count))
       }
 
-  private def postProcess(result: JobService.JobResult) =
+  private def postProcess(result: JobResult) =
     logger.info(s"[Async] [POST] [/jobs] id: ${result.id}, items processed: ${result.processed}")
 }
 ```
@@ -516,7 +516,7 @@ val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
 
 ---
 
-#### 8.2. Refactor: verification functionality idiomatically 
+#### 8.1. Refactor: verification functionality idiomatically 
 
 - The `verifyIO` helper was introduced to wrap Mockito verifications in IO, making them effectful and idiomatic.
 
@@ -559,7 +559,7 @@ This is driven by new tests that require the API to respond before the job is fi
 
 ### TDD Steps (Parallel)
 
-#### 8.1. Try to add a red test: Parallel Job Processing (Test Never Ends)
+#### 8.2. Try to add a red test: Parallel Job Processing (Test Never Ends)
 
 The test was written to check that job processing is started in parallel and the API responds immediately, but the test never ends because the `Deferred` is never completed.
 This is wrong because the test must be either successful or failed, but the test below never ends.
@@ -580,7 +580,7 @@ This is wrong because the test must be either successful or failed, but the test
 }
 ```
 
-#### 8.2. Add Timeout to Make Test Fail Fast
+#### 8.3. Add Timeout to Make Test Fail Fast
 Added `.timeoutTo(200.millis)` to API call to ensure it fails if the job never completes.
 
 ```scala
@@ -627,7 +627,7 @@ yield resp
 
 This requires `JobService` mock to return a deferred result that is not yet ready:
 ```scala
-private def setup(jobResult: Deferred[IO, JobService.JobResult]) = IO {
+private def setup(jobResult: Deferred[IO, JobResult]) = IO {
   val jobService = mock[JobService]
   val logger     = mock[Logger]
   when:
@@ -670,27 +670,3 @@ To emulate long-running job completion, we use `Deferred.complete`.
 
 **Summary:**
 These steps document the most recent TDD cycle for asynchronous job processing: starting with a red test that never ends, making it fail fast with a timeout, then making it green by completing the Deferred, and finally adding asynchronous logging verification. This cycle ensures the API is truly asynchronous and testable.
-
----
-
-## Key Code Snippets
-
-### AsyncJobApi (final form)
-```scala
-class AsyncJobApi(jobService: JobService, logger: Logger) {
-  val routes: HttpRoutes[IO] = HttpRoutes.of[IO]:
-    case req @ POST -> Root / "jobs" =>
-      req.as[TimeRange] >>= { query =>
-        for
-          job  <- jobService.prepare(query)
-          _    <- jobService.process(job).flatMap(postProcess).start
-          resp <- Accepted()
-        yield
-          resp
-            .putHeader(Location(uri"/jobs" / job.id.toString))
-            .putHeader(`X-Total-Count`(job.count))
-            
-  private def postProcess(result: JobService.JobResult) =
-    logger.info(s"[Async] [POST] [/jobs] id: ${result.id}, items processed: ${result.processed}")
-}
-```
