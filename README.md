@@ -185,7 +185,7 @@ class AsyncJobApi {
   val request = Request[IO](Method.POST, uri"/jobs")
   val api = new AsyncJobApi
   api.routes.orNotFound.run(request).asserting { response =>
-    verify(jobService).prepare(query)
+    response.status shouldBe Status.Accepted
   }
 }
 ```
@@ -320,7 +320,7 @@ We also need job ID for fetching the job when it is done.
 val jobService = mock[JobService] // this will not compile
 ```
 
-- Implementation:
+Implementation:
 ```scala
 class JobService {}
 ```
@@ -597,7 +597,7 @@ It can be completed exactly once with a value of type `A`. Other fibers can wait
 The test was written to check that job processing is started in parallel and the API responds immediately, 
 but the test never ends because the `Deferred` is never completed. This is wrong because the test must be either 
 successful or failed, but the test below never ends.
-
+ 
 ```scala
 "initiates the job in parallel and responds with HTTP headers immediately" in {
   for
@@ -629,8 +629,11 @@ private def setup(jobResult: Deferred[IO, JobResult]) = IO {
 
 ```
 
+A test that can neither fail nor succeed provides no feedback, so adding a timeout is not a workaround 
+but a necessary step to restore a valid red-green-refactor cycle when specifying parallel computations.
+
 #### 9.2. Add Timeout to Make Test Fail Fast
-Added `.timeoutTo(200.millis)` to API call to ensure it fails if the job never completes.
+Add timeout to make Test Fail Fast: `.timeoutTo(200.millis)` if the job never completes.
 
 ```scala
 response   <- api.routes.orNotFound.run(request).timeout(200.millis)

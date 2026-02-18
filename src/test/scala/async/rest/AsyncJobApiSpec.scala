@@ -43,8 +43,7 @@ class AsyncJobApiSpec extends AsyncWordSpec
 
   "POST /jobs" should {
     "initiates the job in parallel and responds with HTTP headers immediately" in {
-
-      val test = for
+      for
         jobResult  <- Deferred[IO, JobResult]
         deps       <- setup(jobResult)
         api         = AsyncJobApi(deps.jobService, deps.logger)
@@ -54,8 +53,6 @@ class AsyncJobApiSpec extends AsyncWordSpec
         _          <- verifyIO(deps.jobService)(_.process(is(job)))
       yield
         assertion
-
-      test
     }
 
     "log job result asynchronously when job completes" in {

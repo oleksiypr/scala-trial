@@ -4,6 +4,12 @@ version := "0.1.0"
 
 scalaVersion := "3.8.1"
 
+scalacOptions ++= Seq(
+  "-Vprint:postInlining",
+  "-Xmax-inlines:100000",
+  "-Xcheck-macros",
+)
+
 libraryDependencies ++= Seq(
   "org.typelevel"      %% "cats-effect"         % "3.5.2",
   "org.http4s"         %% "http4s-core"         % "0.23.25",
@@ -30,4 +36,4 @@ scalacOptions ++= Seq(
   "-unchecked"
 )
 
-Test / parallelExecution := false
+Test / parallelExecution := true
