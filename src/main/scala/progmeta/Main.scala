@@ -2,11 +2,6 @@ package progmeta
 
 object Main {
 
-  private case class Foo(x: Int) {
-    infix def +(y: Foo): Foo = Foo(x + y.x)
-  }
-
-
   @main def run(): Unit = {
     Debug.included(false) {
       val x = 10
@@ -20,11 +15,10 @@ object Main {
       Debug.debug(Foo(42) + Foo(1))
     }
 
-    Debug.included(true) {
+    Debug.included(false) {
       val x = 2.0
       square(x)
       qube(x)
-      ()
     }
   }
 }

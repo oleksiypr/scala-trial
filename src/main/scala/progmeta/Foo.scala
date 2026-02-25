@@ -5,9 +5,11 @@ case class Foo(x: Int) {
 }
 
 object Foo {
+  
+  import JsonPrettifier.*
+  
   given JsonPrettifier[Foo] = foo =>
-    s"""
-      |{
-      | "x": ${foo.x}
-      |}""".stripMargin
+    s"""|{
+       |  "x": ${foo.x.pretty}
+       |}""".stripMargin
 }

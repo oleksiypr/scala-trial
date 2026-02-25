@@ -2,8 +2,8 @@ package progmeta
 
 import scala.quoted.*
 
-inline def square(inline x: Double): Double = ${ unrolledPowerCode('x, 2) }
-inline def qube(inline x: Double): Double = ${ unrolledPowerCode('x, 3) }
+inline def square(x: Double): Double = ${ unrolledPowerCode('x, 2) }
+inline def qube(x: Double): Double = ${ unrolledPowerCode('x, 3) }
 
 def unrolledPowerCode(x: Expr[Double], n: Int)(using Quotes): Expr[Double] =
   if n == 0 then '{ 1.0 }
