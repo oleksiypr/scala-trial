@@ -1,5 +1,9 @@
 package progmeta
 
+import cats.Id
+
+import scala.compiletime.{constValue, constValueTuple}
+
 object Main {
 
   @main def run(): Unit = {
@@ -20,5 +24,36 @@ object Main {
       square(x)
       qube(x)
     }
+
+    Debug.included(false) {
+      type Record = (Int, String, Boolean)
+
+      type T[x] = x match
+        case Int => 0
+        case String => 1
+        case Boolean => 2
+
+      type TupleElems[t] = t match
+        case EmptyTuple => EmptyTuple
+        case h *: t => T[h] *: TupleElems[t]
+
+      val ordinals = constValueTuple[TupleElems[Record]]
+      println(ordinals)
+    }
+
+    Debug.included(false) {
+      import scala.deriving.Mirror
+      import scala.compiletime.*
+
+      case class Baz(n: Int, s: String, b: Boolean)
+
+      inline def names[T](using m: Mirror.ProductOf[T]): Unit = {
+        // println(constValue[m.MirroredLabel])
+        println(constValueTuple[m.MirroredElemLabels])
+      }
+
+      names[Baz]
+    }
+
   }
 }
