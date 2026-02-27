@@ -30,6 +30,9 @@ libraryDependencies ++= Seq(
   "org.typelevel"      %% "cats-effect-testing-scalatest" % "1.7.0" % Test,
 )
 
+libraryDependencies += "org.scala-lang" %% "scala3-staging" % scalaVersion.value
+
+
 scalacOptions ++= Seq(
   "-deprecation",
   "-feature",

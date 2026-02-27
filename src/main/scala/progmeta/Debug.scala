@@ -9,7 +9,7 @@ object Debug {
   inline def included(enabled: Boolean)(inline code: => Unit): Unit =
     if enabled then {code; ()} else ()
 
-  private def debugImpl[A : Type](expr: Expr[A])(using Quotes): Expr[A] = {
+  private[progmeta] def debugImpl[A : Type](expr: Expr[A])(using Quotes): Expr[A] = {
     '{
       val value = $expr
       println(${Expr(expr.show)} + " = " + value)
