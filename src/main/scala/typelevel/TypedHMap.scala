@@ -37,7 +37,7 @@ object TypedHMap {
       using ev: GetValue[T, K] =:= Nothing
     ): UpdateHandler[T, K, V] with
     type Out = (K, V) *: T
-    def apply(m: M[T], k: K, v: V): M[Out] = m.add(k, v)
+    def apply(m: M[T], k: K, v: V): M[Out] =m + (k -> v)
 
   given Drop[T <: Tuple, K <: Singleton](
       using ev: GetValue[T, K] =!= Nothing

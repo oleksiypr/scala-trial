@@ -1,9 +1,11 @@
 package progmeta
 
-import cats.{Eq, Id, Show}
-import dotty.tools.backend.jvm.Primitives.Primitive
+import scala.compiletime.{constValue, constValueTuple, summonFrom, erasedValue, summonInline}
+import scala.deriving.Mirror
 
-import scala.compiletime.{constValue, constValueTuple}
+case class Foo(x: Int) {
+  infix def +(y: Foo): Foo = Foo(x + y.x)
+}
 
 object Main {
 
@@ -41,11 +43,8 @@ object Main {
       val ordinals = constValueTuple[TupleElems[Record]]
       println(ordinals)
     }
-
+    
     Debug.included(true) {
-      import scala.deriving.Mirror
-      import scala.compiletime.*
-
       case class Baz(n: Int, s: String, b: Boolean)
       case class Qux(d: Double, c: Baz)
 
@@ -85,9 +84,8 @@ object Main {
           case _                         => summonInline[GetLabel[Elem]].label
         }
 
-
       inline def describeClass[T <: Product](using m: Mirror.ProductOf[T]): String = {
-        val className        = label[T]
+        val className       = label[T]
         val elemLabels      = elementLabels[T]
         val typeLabels      = typeLabelsProduct[T]
         val labelsWithTypes = elemLabels.zip(typeLabels).map( (e, t) => s"$e: $t").mkString(", ")
