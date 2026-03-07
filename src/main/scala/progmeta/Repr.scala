@@ -5,6 +5,7 @@ import scala.deriving.Mirror
 
 trait Repr[T] {
   def repr(t: T): String
+  def label: String
 }
 
 object Repr {
@@ -17,16 +18,29 @@ object Repr {
 
   inline given derived[T <: Product](
       using m: Mirror.ProductOf[T]
-    ): Repr[T] = t => repr[T](t)
+    ): Repr[T] = new Repr[T] {
+    override def repr(t: T): String = Repr.repr(t)
+    override def label: String = Repr.label
+  }
+
+  given Repr[Int] with
+    override def repr(t: Int): String = t.toString
+    override def label: String = "Int"
+
+  given Repr[Double] with
+    override def repr(t: Double): String = t.toString
+    override def label: String = "Double"
 
   inline def repr[T <: Product](t: T)(using m: Mirror.ProductOf[T]): String =
     val className = label[T]
     val argName   = elementLabels[T]
     val agrValue  = t.productIterator.toList
     val argRepr = argName.zip(agrValue).map {
-      (name, value) => s"$name: Int = ${value.toString}"
+      (name, value) => value match
+        case i: Int => s"$name: Int = ${i.repr}"
+        case d: Double => s"$name: Double = ${d.repr}"
     }
-    
+
     s"$className(${argRepr.mkString(", ")})"
 
 
@@ -35,6 +49,5 @@ object Repr {
 
   inline def elementLabels[T <: Product](using m: Mirror.ProductOf[T]): List[String] =
     constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
-
 
 }

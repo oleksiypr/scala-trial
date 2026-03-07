@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers.shouldBe
 
 object ReprSpec {
   case class Qux() derives Repr
-  case class Foo(n: Int, m: Int) derives Repr
+  case class Foo(n: Int, m: Double) derives Repr
 }
 
 class ReprSpec extends AnyFunSuite with Matchers {
@@ -21,6 +21,6 @@ class ReprSpec extends AnyFunSuite with Matchers {
   
   test("Repr for Foo(1, 2)") {
     val foo = Foo(1, 2)
-    foo.repr shouldBe "Foo(n: Int = 1, m: Int = 2)"
+    foo.repr shouldBe "Foo(n: Int = 1, m: Double = 2.0)"
   }
 }
