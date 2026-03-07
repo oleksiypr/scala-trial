@@ -11,10 +11,10 @@ object ReprSpec {
 class ReprSpec extends AnyFunSuite with Matchers {
   
   import ReprSpec.*
+  import Repr.*
   
   test("Repr for Qux()") {
-    val repr = Repr[Qux]
     val qux = Qux()
-    repr.repr(qux) shouldBe "Qux()"
+    qux.repr shouldBe "Qux()"
   }
 }

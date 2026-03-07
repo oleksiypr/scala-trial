@@ -11,6 +11,10 @@ object Repr {
   
   def apply[T](using repr: Repr[T]): Repr[T] = repr
   
+  extension [T] (t: T) {
+    def repr(using r: Repr[T]): String = r.repr(t)
+  }
+  
   inline given derived[T <: Product](
       using m: Mirror.ProductOf[T]
     ): Repr[T] = repr[T]
