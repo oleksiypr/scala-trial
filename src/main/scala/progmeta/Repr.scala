@@ -21,14 +21,13 @@ object Repr {
 
   inline def repr[T <: Product](t: T)(using m: Mirror.ProductOf[T]): String =
     val className = label[T]
-    val argName   = elementLabels[T].headOption
-    val agrValue = t.productIterator.toList.headOption
-    val argRepr = for
-      n <- argName
-      v <- agrValue
-    yield s"$n: Int = $v"
+    val argName   = elementLabels[T]
+    val agrValue  = t.productIterator.toList
+    val argRepr = argName.zip(agrValue).map {
+      (name, value) => s"$name: Int = ${value.toString}"
+    }
     
-    s"$className(${argRepr.getOrElse("")})"
+    s"$className(${argRepr.mkString(", ")})"
 
 
   inline def label[T](using m: Mirror.Of[T]): String =
