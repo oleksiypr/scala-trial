@@ -15,7 +15,10 @@ object Repr {
       using m: Mirror.ProductOf[T]
     ): Repr[T] = repr[T]
   
-  inline def repr[T <: Product](t: T)(using m: Mirror.ProductOf[T]): String = "Baz(n: Int = 1)"
+  inline def repr[T <: Product](t: T)(using m: Mirror.ProductOf[T]): String =
+    val className = label[T]
+    s"$className()"
+    
   
   inline def label[T](using m: Mirror.Of[T]): String =
     constValue[m.MirroredLabel]
