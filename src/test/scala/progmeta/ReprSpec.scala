@@ -9,6 +9,7 @@ object ReprSpec {
   case class Bar(m: Double) derives Repr
   case class Baz(n: Int, m: Double)
   case class Foo(n: Int, bar: Bar) derives Repr
+  case class Quux(s: String, b: Option[Boolean]) derives Repr
 }
 
 class ReprSpec extends AnyFunSuite with Matchers {
@@ -34,5 +35,10 @@ class ReprSpec extends AnyFunSuite with Matchers {
   test("Repr for Foo(1, Bar(2.0))") {
     val foo = Foo(1, Bar(2))
     foo.repr shouldBe "Foo(n: Int = 1, bar: Bar = Bar(m: Double = 2.0))"
+  }
+  
+  test("Repr for Quux('hello', maybe)") {
+    Quux("hello", Some(true)).repr shouldBe "Quux(s: String = hello, b: Option[Boolean] = Some(true))"
+    Quux("buy", None).repr shouldBe "Quux(s: String = buy, b: Option[Boolean] = None)"
   }
 }

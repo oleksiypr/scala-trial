@@ -30,6 +30,14 @@ object Repr {
   given Repr[Double] with
     override def repr(t: Double): String = t.toString
     override def label: String = "Double"
+  
+  given Repr[String] with
+    override def repr(t: String): String = t
+    override def label: String = "String"
+    
+  given Repr[Boolean] with 
+    override def repr(t: Boolean): String = t.toString
+    override def label: String = "Boolean"
 
   inline def repr[T <: Product](t: T)(using m: Mirror.ProductOf[T]): String =
     val className = label[T]
@@ -49,9 +57,25 @@ object Repr {
   inline def summonReprs[Tup <: Tuple]: List[Repr[?]] =
     inline erasedValue[Tup] match
       case _: EmptyTuple      => Nil
-      case _: (elem *: elems) => summonInline[Repr[elem]] :: summonReprs[elems]
+      case _: (elem *: elems) => summonRepr[elem] :: summonReprs[elems]
 
-  inline def elementLabels[T <: Product](using m: Mirror.ProductOf[T]): List[String] =
+  inline def summonRepr[Elem]: Repr[?] =
+    summonFrom {
+      case _: Mirror.ProductOf[Elem] => summonInline[Repr[Elem]]
+      case p: Mirror.SumOf[Elem]     => reprSum[Elem](using p)
+      case _                         => summonInline[Repr[Elem]]
+    }
+    
+  inline def reprSum[Elem](using m: Mirror.SumOf[Elem]): Repr[Elem] = 
+    new Repr[Elem] {
+      override def repr(t: Elem): String = t match {
+        case Some(b) => s"Some($b)"
+        case None    => "None"
+      }
+      override def label: String = "Option[Boolean]"
+    }
+  
+  inline def elementLabels[T](using m: Mirror.Of[T]): List[String] =
     constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
 
 }
