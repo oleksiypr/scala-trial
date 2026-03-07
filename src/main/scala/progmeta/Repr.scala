@@ -36,9 +36,9 @@ object Repr {
     val argNames  = elementLabels[T]
     val agrValues = t.productIterator.toList
     val agrReprs  = summonReprs[m.MirroredElemTypes]
-    
-    val argRepr = argNames.zip(agrValues).zip(agrReprs).map {
-      case ((name, value), repr) =>
+
+    val argRepr = argNames.lazyZip(agrValues).lazyZip(agrReprs).map {
+      (name, value, repr) =>
         s"$name: ${repr.label} = ${repr.asInstanceOf[Repr[Any]].repr(value)}"
     }
     s"$className(${argRepr.mkString(", ")})"
