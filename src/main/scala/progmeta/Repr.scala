@@ -37,8 +37,12 @@ object Repr {
     val agrValue  = t.productIterator.toList
     val argRepr = argName.zip(agrValue).map {
       (name, value) => value match
-        case i: Int => s"$name: Int = ${i.repr}"
-        case d: Double => s"$name: Double = ${d.repr}"
+        case i: Int => 
+          val repr = Repr[Int]
+          s"$name: ${repr.label} = ${i.repr}"
+        case d: Double =>
+          val repr = Repr[Double]
+          s"$name: ${repr.label} = ${d.repr}"
     }
 
     s"$className(${argRepr.mkString(", ")})"
