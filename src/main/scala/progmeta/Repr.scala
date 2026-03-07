@@ -33,23 +33,23 @@ object Repr {
 
   inline def repr[T <: Product](t: T)(using m: Mirror.ProductOf[T]): String =
     val className = label[T]
-    val argName   = elementLabels[T]
-    val agrValue  = t.productIterator.toList
-    val argRepr = argName.zip(agrValue).map {
-      (name, value) => value match
-        case i: Int => 
-          val repr = Repr[Int]
-          s"$name: ${repr.label} = ${i.repr}"
-        case d: Double =>
-          val repr = Repr[Double]
-          s"$name: ${repr.label} = ${d.repr}"
+    val argNames  = elementLabels[T]
+    val agrValues = t.productIterator.toList
+    val agrReprs  = summonReprs[m.MirroredElemTypes]
+    
+    val argRepr = argNames.zip(agrValues).zip(agrReprs).map {
+      case ((name, value), repr) =>
+        s"$name: ${repr.label} = ${repr.asInstanceOf[Repr[Any]].repr(value)}"
     }
-
     s"$className(${argRepr.mkString(", ")})"
-
 
   inline def label[T](using m: Mirror.Of[T]): String =
     constValue[m.MirroredLabel]
+
+  inline def summonReprs[Tup <: Tuple]: List[Repr[?]] =
+    inline erasedValue[Tup] match
+      case _: EmptyTuple      => Nil
+      case _: (elem *: elems) => summonInline[Repr[elem]] :: summonReprs[elems]
 
   inline def elementLabels[T <: Product](using m: Mirror.ProductOf[T]): List[String] =
     constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
