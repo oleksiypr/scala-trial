@@ -3,11 +3,11 @@ package progmeta
 import scala.compiletime.{constValue, constValueTuple, summonFrom, erasedValue, summonInline}
 import scala.deriving.Mirror
 
-case class Foo(x: Int) {
-  infix def +(y: Foo): Foo = Foo(x + y.x)
-}
-
 object Main {
+
+  case class Foo(x: Int) {
+    infix def +(y: Foo): Foo = Foo(x + y.x)
+  }
 
   @main def run(): Unit = {
     Debug.included(false) {
