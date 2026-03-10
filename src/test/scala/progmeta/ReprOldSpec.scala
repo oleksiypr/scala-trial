@@ -3,12 +3,12 @@ package progmeta
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 
-object ReprSpec {
-  case class Qux() derives Repr
-  case class Bar(m: Double) derives Repr
+object ReprOldSpec {
+  case class Qux() derives ReprOld
+  case class Bar(m: Double) derives ReprOld
   
-  case class Baz(n: Int, m: Double) derives Repr
-  case class Foo(n: Int, bar: Bar) derives Repr
+  case class Baz(n: Int, m: Double) derives ReprOld
+  case class Foo(n: Int, bar: Bar) derives ReprOld
   
   enum Foobar:
     case A(s: String)
@@ -16,10 +16,10 @@ object ReprSpec {
     case C(b: Boolean)
 }
 
-class ReprSpec extends AnyFunSuite with Matchers {
+class ReprOldSpec extends AnyFunSuite with Matchers {
   
-  import Repr.*
-  import ReprSpec.*
+  import ReprOld.*
+  import ReprOldSpec.*
   
   test("Repr for Qux()") {
     val qux = Qux()
@@ -43,7 +43,7 @@ class ReprSpec extends AnyFunSuite with Matchers {
 
   test("Repr for Sum type") {
     val a: Option[Boolean] = Some(true)
-    given Repr[Option[Boolean]] = Repr.derived
+    given ReprOld[Option[Boolean]] = ReprOld.derived
     a.repr shouldBe "Some(value: Boolean = true)"
   }
 
