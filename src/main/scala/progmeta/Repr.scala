@@ -79,14 +79,13 @@ object Repr {
     constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
 
   inline def typeLabel[Elem]: String = summonFrom {
-    case r: Repr[Elem] => r.label
+    case r: Repr[Elem]      => r.label
     case m: Mirror.Of[Elem] => constValue[m.MirroredLabel]
   }
 
-  inline def getErasedValue[T](using m: Mirror.Of[T]): String =
+  inline def getErasedValue[T](using m: Mirror.Of[T]): List[String] =
     inline erasedValue[m.MirroredElemTypes] match
-      case _: EmptyTuple      => "empty"
-      case _: (cons *: nil *: EmptyTuple) =>
-        typeLabel[cons] + ", " + typeLabel[nil]
-      case _    => "N/A"
+      case _: EmptyTuple      => Nil
+      case _: (elem *: elems) => 
+        typeLabel[elem] :: getErasedValue[elems](using summonInline[Mirror.Of[elems]])
 }

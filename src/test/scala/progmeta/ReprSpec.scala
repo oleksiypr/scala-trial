@@ -11,7 +11,11 @@ object ReprSpec {
   case class Baz(n: Int, m: Double)
   case class Foo(n: Int, bar: Bar) derives Repr
   case class Quux(s: String, b: Option[Boolean]) derives Repr
-  case class Abc(xs: List[Int]) derives Repr
+  
+  enum Foobar:
+    case A(s: String)
+    case B(i: Int)
+    case C(b: Boolean)
 }
 
 class ReprSpec extends AnyFunSuite with Matchers {
@@ -50,8 +54,9 @@ class ReprSpec extends AnyFunSuite with Matchers {
   }
   
   test("how erasedValue works") {
-    getErasedValue[List[Int]] shouldBe "::, Nil"
-    getErasedValue[Baz] shouldBe "Int, Double"
-    getErasedValue[(String, Boolean)] shouldBe "String, Boolean"
+    getErasedValue[List[Int]] shouldBe List("::", "Nil")
+    getErasedValue[Baz] shouldBe List("Int", "Double")
+    getErasedValue[(String, Boolean)] shouldBe List("String", "Boolean")
+    getErasedValue[Foobar] shouldBe List("A", "B", "C")
   }
 }
