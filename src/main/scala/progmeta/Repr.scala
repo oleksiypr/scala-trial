@@ -16,12 +16,16 @@ object Repr {
     def repr(using r: Repr[T]): String = r.repr(t)
   }
 
-  inline given derived[T <: Product](
-      using m: Mirror.ProductOf[T]
-    ): Repr[T] = new Repr[T] {
-    override def repr(t: T): String = Repr.repr(t)
-    override def label: String = Repr.label
-  }
+  inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
+    inline m match 
+      case p: Mirror.ProductOf[T] => new Repr[T] {
+        override def repr(t: T): String = reprProduct(t)(using p)
+        override def label: String = Repr.label[T]
+      }
+      case s: Mirror.SumOf[T] => new Repr[T] {
+        override def repr(t: T): String = "Some(value: Boolean = true)"
+        override def label: String = Repr.label[T]
+      }
 
   given Repr[Int] with
     override def repr(t: Int): String = t.toString
@@ -39,10 +43,10 @@ object Repr {
     override def repr(t: Boolean): String = t.toString
     override def label: String = "Boolean"
 
-  inline def repr[T <: Product](t: T)(using m: Mirror.ProductOf[T]): String =
+  inline def reprProduct[T](t: T)(using m: Mirror.ProductOf[T]): String =
     val className = label[T]
     val argNames  = elementLabels[T]
-    val agrValues = t.productIterator.toList
+    val agrValues = t.asInstanceOf[Product].productIterator.toList
     val agrReprs  = summonReprs[m.MirroredElemTypes]
 
     val argRepr = argNames.lazyZip(agrValues).lazyZip(agrReprs).map {

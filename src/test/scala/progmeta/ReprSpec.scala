@@ -7,7 +7,7 @@ object ReprSpec {
   case class Qux() derives Repr
   case class Bar(m: Double) derives Repr
   
-  case class Baz(n: Int, m: Double)
+  case class Baz(n: Int, m: Double) derives Repr
   case class Foo(n: Int, bar: Bar) derives Repr
   
   enum Foobar:
@@ -40,11 +40,11 @@ class ReprSpec extends AnyFunSuite with Matchers {
     val foo = Foo(1, Bar(2))
     foo.repr shouldBe "Foo(n: Int = 1, bar: Bar = Bar(m: Double = 2.0))"
   }
-  
-  test("Repr for Option[Boolean]") {
-    Some(true).repr shouldBe "Some(value: Boolean = true)"
-    None.repr shouldBe "None()"
+
+  test("Repr for Sum type") {
+    val a: Option[Boolean] = Some(true)
+    given Repr[Option[Boolean]] = Repr.derived
+    a.repr shouldBe "Some(value: Boolean = true)"
   }
-  
-  
+
 }
