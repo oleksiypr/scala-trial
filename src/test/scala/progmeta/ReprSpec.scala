@@ -7,9 +7,11 @@ import org.scalatest.matchers.should.Matchers.shouldBe
 object ReprSpec {
   case class Qux() derives Repr
   case class Bar(m: Double) derives Repr
+  
   case class Baz(n: Int, m: Double)
   case class Foo(n: Int, bar: Bar) derives Repr
   case class Quux(s: String, b: Option[Boolean]) derives Repr
+  case class Abc(xs: List[Int]) derives Repr
 }
 
 class ReprSpec extends AnyFunSuite with Matchers {
@@ -37,8 +39,19 @@ class ReprSpec extends AnyFunSuite with Matchers {
     foo.repr shouldBe "Foo(n: Int = 1, bar: Bar = Bar(m: Double = 2.0))"
   }
   
+  test("Repr for Option[Boolean]") {
+    Some(true).repr shouldBe "Some(value: Boolean = true)"
+    None.repr shouldBe "None()"
+  }
+  
   test("Repr for Quux('hello', maybe)") {
-    Quux("hello", Some(true)).repr shouldBe "Quux(s: String = hello, b: Option[Boolean] = Some(true))"
-    Quux("buy", None).repr shouldBe "Quux(s: String = buy, b: Option[Boolean] = None)"
+    Quux("hello", Some(true)).repr shouldBe "Quux(s: String = hello, b: Option = Some(value: Boolean = true))"
+    Quux("buy", None).repr shouldBe "Quux(s: String = buy, b: Option = None())"
+  }
+  
+  test("how erasedValue works") {
+    getEerasedValue[List[Int]] shouldBe "::, Nil"
+    getEerasedValue[Baz] shouldBe "Int, Double"
+    getEerasedValue[(String, Boolean)] shouldBe "String, Boolean"
   }
 }

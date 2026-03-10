@@ -65,17 +65,28 @@ object Repr {
       case p: Mirror.SumOf[Elem]     => reprSum[Elem](using p)
       case _                         => summonInline[Repr[Elem]]
     }
-    
-  inline def reprSum[Elem](using m: Mirror.SumOf[Elem]): Repr[Elem] = 
+
+  inline def reprSum[Elem](using m: Mirror.SumOf[Elem]): Repr[Elem] =
     new Repr[Elem] {
       override def repr(t: Elem): String = t match {
-        case Some(b) => s"Some($b)"
-        case None    => "None"
+        case Some(b) => s"Some(value: Boolean = $b)"
+        case None    => "None()"
       }
-      override def label: String = "Option[Boolean]"
+      override def label: String = "Option"
     }
   
   inline def elementLabels[T](using m: Mirror.Of[T]): List[String] =
     constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
 
+  inline def typeLabel[Elem]: String = summonFrom {
+    case r: Repr[Elem] => r.label
+    case m: Mirror.Of[Elem] => constValue[m.MirroredLabel]
+  }
+
+  inline def getEerasedValue[T](using m: Mirror.Of[T]): String =
+    inline erasedValue[m.MirroredElemTypes] match
+      case _: EmptyTuple      => "empty"
+      case _: (cons *: nil *: EmptyTuple) =>
+        typeLabel[cons] + ", " + typeLabel[nil]
+      case _    => "N/A"
 }
