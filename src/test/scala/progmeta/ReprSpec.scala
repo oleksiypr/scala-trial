@@ -50,8 +50,8 @@ class ReprSpec extends AnyFunSuite with Matchers {
   }
   
   test("how erasedValue works") {
-    getEerasedValue[List[Int]] shouldBe "::, Nil"
-    getEerasedValue[Baz] shouldBe "Int, Double"
-    getEerasedValue[(String, Boolean)] shouldBe "String, Boolean"
+    getErasedValue[List[Int]] shouldBe "::, Nil"
+    getErasedValue[Baz] shouldBe "Int, Double"
+    getErasedValue[(String, Boolean)] shouldBe "String, Boolean"
   }
 }

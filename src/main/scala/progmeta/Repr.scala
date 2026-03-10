@@ -83,7 +83,7 @@ object Repr {
     case m: Mirror.Of[Elem] => constValue[m.MirroredLabel]
   }
 
-  inline def getEerasedValue[T](using m: Mirror.Of[T]): String =
+  inline def getErasedValue[T](using m: Mirror.Of[T]): String =
     inline erasedValue[m.MirroredElemTypes] match
       case _: EmptyTuple      => "empty"
       case _: (cons *: nil *: EmptyTuple) =>
