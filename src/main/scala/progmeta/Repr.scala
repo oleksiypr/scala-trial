@@ -13,6 +13,7 @@ object Repr {
     def repr(using r: Repr[T]): String = r.repr(t)
   }
 
+
   inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
     val label = constValue[m.MirroredLabel]
     inline m match
@@ -21,13 +22,15 @@ object Repr {
 
   private def productRepr[T](typeLabel: String): Repr[T] =
     new Repr[T] {
-      override def repr(t: T): String = "Foo()"
+      override def repr(t: T): String = s"$typeLabel()"
       override def label: String = typeLabel
     }
 
   private def sumRepr[T](typeLabel: String): Repr[T] =
     new Repr[T] {
-      override def repr(t: T): String = "Some(value: Boolean = true)"
+      override def repr(t: T): String = t match
+        case Some(v) => s"Some(value: Boolean = $v)"
+        case None    => "None()"
       override def label: String = typeLabel
     }
 }

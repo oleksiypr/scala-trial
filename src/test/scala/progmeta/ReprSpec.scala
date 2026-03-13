@@ -21,7 +21,11 @@ class ReprSpec extends AnyFunSuite with Matchers {
   test("Repr for Sum type") {
     val a: Option[Boolean] = Some(true)
     given R: Repr[Option[Boolean]] = Repr.derived
+
     a.repr shouldBe "Some(value: Boolean = true)"
     R.label shouldBe "Option"
+
+    val b: Option[Boolean] = None
+    b.repr shouldBe "None()"
   }
 }
