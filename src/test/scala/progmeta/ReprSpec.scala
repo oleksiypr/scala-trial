@@ -18,4 +18,10 @@ class ReprSpec extends AnyFunSuite with Matchers {
     qux.repr shouldBe "Foo()"
   }
 
+  test("Repr for Sum type") {
+    val a: Option[Boolean] = Some(true)
+    given R: Repr[Option[Boolean]] = Repr.derived
+    a.repr shouldBe "Some(value: Boolean = true)"
+  }
+
 }
