@@ -14,14 +14,14 @@ class ReprSpec extends AnyFunSuite with Matchers {
   import Repr.*
 
   test("Repr for Foo()") {
-    val qux = Foo()
-    qux.repr shouldBe "Foo()"
+    val foo = Foo()
+    foo.repr shouldBe "Foo()"
   }
 
   test("Repr for Sum type") {
     val a: Option[Boolean] = Some(true)
     given R: Repr[Option[Boolean]] = Repr.derived
     a.repr shouldBe "Some(value: Boolean = true)"
+    R.label shouldBe "Option"
   }
-
 }
