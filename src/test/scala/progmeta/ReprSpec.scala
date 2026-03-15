@@ -9,7 +9,6 @@ object ReprSpec {
   case class Bar(n: Int) derives Repr
 }
 
-
 class ReprSpec extends AnyFunSuite with Matchers {
   import ReprSpec.*
   import Repr.*
