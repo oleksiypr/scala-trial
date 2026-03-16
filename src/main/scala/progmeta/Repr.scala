@@ -1,7 +1,7 @@
 package progmeta
 
+import scala.compiletime.{constValue, constValueTuple, erasedValue, summonFrom}
 import scala.deriving.Mirror
-import scala.compiletime.{constValue, constValueTuple, summonFrom, erasedValue, summonInline}
 
 trait Repr[T] {
   def repr(t: T): String
@@ -25,17 +25,22 @@ object Repr {
   given Repr[Boolean] with
     override def repr(t: Boolean): String = t.toString
     override def label: String = "Boolean"
+    
+  given Repr[String] with
+    override def repr(t: String): String = t
+    override def label: String = "String"
 
   inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
     val label    = constValue[m.MirroredLabel]
+    val reprs = summonReprs[m.MirroredElemTypes]
     inline m match
       case _: Mirror.ProductOf[T] =>
         val argNames = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
-        val reprs = summonReprs[m.MirroredElemTypes]
         productRepr[T](label, argNames, reprs)
-      case _: Mirror.SumOf[T]     => sumRepr[T](label)
+      case s: Mirror.SumOf[T] =>
+        sumRepr[T](label, s, reprs)
 
-  private def productRepr[T](typeLabel: String, argNames: List[String], reprs: List[Repr[?]]): Repr[T] =
+  private def productRepr[T](typeLabel: String, argNames: List[String], reprs: => List[Repr[?]]): Repr[T] =
     new Repr[T] {
       override def repr(t: T): String =
         val argValues = t.asInstanceOf[Product].productIterator.toList
@@ -47,16 +52,22 @@ object Repr {
       override def label: String = typeLabel
     }
 
-  private def sumRepr[T](typeLabel: String): Repr[T] =
+  private def sumRepr[T](typeLabel: String, s: Mirror.SumOf[T], reprs: => List[Repr[?]]): Repr[T] =
     new Repr[T] {
-      override def repr(t: T): String = t match
-        case Some(v) => s"Some(value: Boolean = $v)"
-        case None    => "None()"
+      override def repr(t: T): String =
+        reprs(s.ordinal(t)).asInstanceOf[Repr[Any]].repr(t)
+
       override def label: String = typeLabel
     }
 
   private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
     inline erasedValue[T] match
       case _: EmptyTuple => Nil
-      case _: (elem *: elems)  => summonInline[Repr[elem]] :: summonReprs[elems]
+      case _: (elem *: elems)  => sumRepr[elem] :: summonReprs[elems]
+
+  private inline def sumRepr[Elem]: Repr[Elem] =
+    summonFrom {
+      case r: Repr[Elem]      => r
+      case m: Mirror.Of[Elem] => derived[Elem]
+    }
 }
