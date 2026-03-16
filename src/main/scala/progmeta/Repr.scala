@@ -15,20 +15,22 @@ object Repr {
   }
 
   inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
-    val label     = constValue[m.MirroredLabel]
-    val argNames  = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
-    val agrLabels = argNames.map(_ => "Int")
+    val label    = constValue[m.MirroredLabel]
+    val argNames = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
+    val reprs    = summonReprs[m.MirroredElemTypes]
     inline m match
-      case _: Mirror.ProductOf[T] => productRepr[T](label, argNames, agrLabels)
+      case _: Mirror.ProductOf[T] => productRepr[T](label, argNames, reprs)
       case _: Mirror.Of[T]        => sumRepr[T](label)
 
-  private def productRepr[T](typeLabel: String, argNames: List[String], agrLabels: List[String]): Repr[T] =
+  private def productRepr[T](typeLabel: String, argNames: List[String], reprs: List[Repr[?]]): Repr[T] =
     new Repr[T] {
       override def repr(t: T): String = 
         val argValues = t.asInstanceOf[Product].productIterator.toList
-        val args = argNames.lazyZip(agrLabels).lazyZip(argValues)
-          .map((name, label, value) => s"$name: $label = $value").mkString(", ")
-        s"$typeLabel($args)"
+        val args = argNames.lazyZip(reprs).lazyZip(argValues)
+          .map { (name, repr, value) =>
+            s"$name: ${repr.label} = ${repr.asInstanceOf[ReprOld[Any]].repr(value)}"
+          }
+        s"$typeLabel(${args.mkString(", ")})"
       override def label: String = typeLabel
     }
 
@@ -39,4 +41,9 @@ object Repr {
         case None    => "None()"
       override def label: String = typeLabel
     }
+
+  private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
+    inline erasedValue[T] match
+      case _: EmptyTuple => Nil
+      case _: (elem *: elems)  => summonInline[Repr[elem]] :: summonReprs[elems]
 }
