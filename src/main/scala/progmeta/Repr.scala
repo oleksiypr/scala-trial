@@ -14,21 +14,34 @@ object Repr {
     def repr(using r: Repr[T]): String = r.repr(t)
   }
 
+  given Repr[Int] with
+    override def repr(t: Int): String = t.toString
+    override def label: String = "Int"
+
+  given Repr[Double] with
+    override def repr(t: Double): String = t.toString
+    override def label: String = "Double"
+
+  given Repr[Boolean] with
+    override def repr(t: Boolean): String = t.toString
+    override def label: String = "Boolean"
+
   inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
     val label    = constValue[m.MirroredLabel]
-    val argNames = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
-    val reprs    = summonReprs[m.MirroredElemTypes]
     inline m match
-      case _: Mirror.ProductOf[T] => productRepr[T](label, argNames, reprs)
-      case _: Mirror.Of[T]        => sumRepr[T](label)
+      case _: Mirror.ProductOf[T] =>
+        val argNames = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
+        val reprs = summonReprs[m.MirroredElemTypes]
+        productRepr[T](label, argNames, reprs)
+      case _: Mirror.SumOf[T]     => sumRepr[T](label)
 
   private def productRepr[T](typeLabel: String, argNames: List[String], reprs: List[Repr[?]]): Repr[T] =
     new Repr[T] {
-      override def repr(t: T): String = 
+      override def repr(t: T): String =
         val argValues = t.asInstanceOf[Product].productIterator.toList
         val args = argNames.lazyZip(reprs).lazyZip(argValues)
           .map { (name, repr, value) =>
-            s"$name: ${repr.label} = ${repr.asInstanceOf[ReprOld[Any]].repr(value)}"
+            s"$name: ${repr.label} = ${repr.asInstanceOf[Repr[Any]].repr(value)}"
           }
         s"$typeLabel(${args.mkString(", ")})"
       override def label: String = typeLabel
