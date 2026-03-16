@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers
 
 object ReprSpec {
   case class Foo() derives Repr
-  case class Bar(n: Int) derives Repr
+  case class Bar(n: Int, m: Int) derives Repr
 }
 
 class ReprSpec extends AnyFunSuite with Matchers {
@@ -29,8 +29,8 @@ class ReprSpec extends AnyFunSuite with Matchers {
     b.repr shouldBe "None()"
   }
 
-  test("Repr for Bar(1)") {
-    val bar = Bar(1)
-    bar.repr shouldBe "Bar(n: Int = 1)"
+  test("Repr for Bar(1, 2)") {
+    val bar = Bar(1, 2)
+    bar.repr shouldBe "Bar(n: Int = 1, m: Int = 2)"
   }
 }

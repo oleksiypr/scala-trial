@@ -14,10 +14,6 @@ object Repr {
     def repr(using r: Repr[T]): String = r.repr(t)
   }
 
-  given Repr[Int] with
-    override def repr(t: Int): String = t.toString
-    override def label: String = "Int"
-
   inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
     val label     = constValue[m.MirroredLabel]
     val argNames  = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
