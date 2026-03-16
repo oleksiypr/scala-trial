@@ -21,7 +21,7 @@ object Repr {
   inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
     val label     = constValue[m.MirroredLabel]
     val argNames  = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
-    val agrLabels = constValueTuple[m.MirroredElemTypes].toList.map(_.toString)
+    val agrLabels = argNames.map(_ => "Int")
     inline m match
       case _: Mirror.ProductOf[T] => productRepr[T](label, argNames, agrLabels)
       case _: Mirror.Of[T]        => sumRepr[T](label)
@@ -30,7 +30,7 @@ object Repr {
     new Repr[T] {
       override def repr(t: T): String = 
         val argValues = t.asInstanceOf[Product].productIterator.toList
-        val args = argNames.lazyZip(argValues).lazyZip(agrLabels)
+        val args = argNames.lazyZip(agrLabels).lazyZip(argValues)
           .map((name, label, value) => s"$name: $label = $value").mkString(", ")
         s"$typeLabel($args)"
       override def label: String = typeLabel
