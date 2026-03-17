@@ -40,7 +40,7 @@ object Repr {
       case s: Mirror.SumOf[T] =>
         sumRepr[T](label, s, reprs)
 
-  private def productRepr[T](typeLabel: String, argNames: List[String], reprs: => List[Repr[?]]): Repr[T] =
+  private def productRepr[T](typeLabel: String, argNames: List[String], reprs: List[Repr[?]]): Repr[T] =
     new Repr[T] {
       override def repr(t: T): String =
         val argValues = t.asInstanceOf[Product].productIterator.toList
@@ -52,7 +52,7 @@ object Repr {
       override def label: String = typeLabel
     }
 
-  private def sumRepr[T](typeLabel: String, s: Mirror.SumOf[T], reprs: => List[Repr[?]]): Repr[T] =
+  private def sumRepr[T](typeLabel: String, s: Mirror.SumOf[T], reprs: List[Repr[?]]): Repr[T] =
     new Repr[T] {
       override def repr(t: T): String =
         reprs(s.ordinal(t)).asInstanceOf[Repr[Any]].repr(t)
