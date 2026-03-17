@@ -74,4 +74,19 @@ class ReprSpec extends AnyFunSuite with Matchers {
     R.repr(List(1)) shouldBe "::(head: Int = 1, next: List = Nil())"
     R.repr(List(1, 2)) shouldBe "::(head: Int = 1, next: List = ::(head: Int = 2, next: List = Nil()))"
   }
+
+  test("Tuple mapping") {
+    case class TupMap[T](value: T)
+
+    type Mapped[F[_], T <: Tuple] = T match
+      case EmptyTuple => EmptyTuple
+      case h *: t     => F[h] *: Mapped[F, t]
+
+    type MyTuple = (Int, String, Boolean)
+    type MappedTuple = Mapped[TupMap, MyTuple]
+
+    val tuple: MyTuple = (1, "hi", true)
+    val mapped: MappedTuple = tuple.map([t] => t => TupMap[t](t))
+    mapped shouldBe (TupMap(1), TupMap("hi"), TupMap(true))
+  }
 }
