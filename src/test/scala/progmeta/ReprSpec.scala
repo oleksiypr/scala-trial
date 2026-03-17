@@ -9,6 +9,10 @@ object ReprSpec {
   case class Bar(n: Int, m: Int) derives Repr
   case class Baz(n: Int, bar: Bar) derives Repr
   case class Qux(s: Option[String]) derives Repr
+
+  enum Lst[+T] derives Repr:
+    case Cns(t: T, ts: Lst[T])
+    case Nl
 }
 
 class ReprSpec extends AnyFunSuite with Matchers {
@@ -43,14 +47,24 @@ class ReprSpec extends AnyFunSuite with Matchers {
     R.label shouldBe "Some"
     N.label shouldBe "None"
   }
-  
+
   test("Repr for Baz(1, Bar(2, 3))") {
     val baz = Baz(1, Bar(2, 3))
     baz.repr shouldBe "Baz(n: Int = 1, bar: Bar = Bar(n: Int = 2, m: Int = 3))"
   }
-  
+
   test("Repr for Qux(maybeString))") {
     Qux(Some("foo")).repr shouldBe "Qux(s: Option = Some(value: String = foo))"
     Qux(None).repr shouldBe "Qux(s: Option = None())"
+  }
+
+  test("Repr for Lst") {
+    val empty: Lst[Int] = Lst.Nl
+    val unit : Lst[Int] = Lst.Cns(1, Lst.Nl)
+    val list : Lst[Int] = Lst.Cns(1, Lst.Cns(2, Lst.Nl))
+
+    empty.repr shouldBe "Nl()"
+    unit.repr shouldBe "Cns(t: Int = 1, ts: Lst = Nl())"
+    list.repr shouldBe "Cns(t: Int = 1, ts: Lst = Cns(t: Int = 2, ts: Lst = Nl()))"
   }
 }
