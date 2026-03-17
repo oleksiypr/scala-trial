@@ -32,7 +32,7 @@ object Repr {
 
   inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
     val label = constValue[m.MirroredLabel]
-    val reprs = summonReprs[m.MirroredElemTypes]
+    lazy val reprs = summonReprs[m.MirroredElemTypes]
     inline m match
       case _: Mirror.ProductOf[T] =>
         val argNames = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
