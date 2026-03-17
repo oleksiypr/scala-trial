@@ -32,7 +32,7 @@ object Repr {
 
   inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
     val label = constValue[m.MirroredLabel]
-    val reprs = summonReprs[m.MirroredElemTypes]
+    lazy val reprs = summonReprs[m.MirroredElemTypes]
     inline m match
       case _: Mirror.ProductOf[T] =>
         val argNames = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
@@ -67,7 +67,6 @@ object Repr {
 
   private inline def sumRepr[Elem]: Repr[Elem] =
     summonFrom {
-      case _: Elem => error("infinite recursive derivation")
       case r: Repr[Elem]      => r
       case m: Mirror.Of[Elem] => Repr.derived[Elem]
     }

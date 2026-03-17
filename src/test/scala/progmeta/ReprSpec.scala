@@ -67,4 +67,11 @@ class ReprSpec extends AnyFunSuite with Matchers {
     unit.repr shouldBe "Cns(t: Int = 1, ts: Lst = Nl())"
     list.repr shouldBe "Cns(t: Int = 1, ts: Lst = Cns(t: Int = 2, ts: Lst = Nl()))"
   }
+
+  test("Repr for List") {
+    given R: Repr[List[Int]] = Repr.derived
+    R.repr(Nil) shouldBe "Nil()"
+    R.repr(List(1)) shouldBe "::(head: Int = 1, next: List = Nil())"
+    R.repr(List(1, 2)) shouldBe "::(head: Int = 1, next: List = ::(head: Int = 2, next: List = Nil()))"
+  }
 }
