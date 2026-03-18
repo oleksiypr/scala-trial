@@ -132,7 +132,8 @@ class ReprSpec extends AnyFunSuite with Matchers {
         case _: (h *: t) =>
           val head = zipped.asInstanceOf[(h, Ev[h]) *: WithEvs[t]].head
           val tail = zipped.asInstanceOf[(h, Ev[h]) *: WithEvs[t]].tail
-          (head._1, head._2.foo(head._1)) *: eval[t](tail)
+          val (v, ev) = head
+          (v, ev.foo(v)) *: eval[t](tail)
 
     eval[MyTuple](zipped) shouldBe
       ((1, "ev(1: Int)"), ("hi", "ev(hi: String)"), (true, "ev(true: Boolean)"))
