@@ -1,6 +1,6 @@
 package progmeta
 
-import scala.compiletime.{constValue, error, constValueTuple, erasedValue, summonFrom}
+import scala.compiletime.{constValue, constValueTuple, erasedValue, summonFrom}
 import scala.deriving.Mirror
 
 trait Repr[T] {
@@ -40,25 +40,31 @@ object Repr {
       case s: Mirror.SumOf[T] =>
         sumRepr[T](label, s, reprs)
 
-  private def productRepr[T](typeLabel: String, argNames: List[String], reprs: => List[Repr[?]]): Repr[T] =
-    new Repr[T] {
-      override def repr(t: T): String =
-        val argValues = t.asInstanceOf[Product].productIterator.toList
-        val args = argNames.lazyZip(reprs).lazyZip(argValues)
-          .map { (name, repr, value) =>
-            s"$name: ${repr.label} = ${repr.asInstanceOf[Repr[Any]].repr(value)}"
-          }
-        s"$typeLabel(${args.mkString(", ")})"
-      override def label: String = typeLabel
-    }
+  private def productRepr[T](
+      typeLabel: String,
+      argNames: List[String],
+      reprs: => List[Repr[?]]
+    ): Repr[T] = new Repr[T] {
+    override def repr(t: T): String =
+      val argValues = t.asInstanceOf[Product].productIterator.toList
+      val args = argNames.lazyZip(reprs).lazyZip(argValues)
+        .map { (name, repr, value) =>
+          s"$name: ${repr.label} = ${repr.asInstanceOf[Repr[Any]].repr(value)}"
+        }
+      s"$typeLabel(${args.mkString(", ")})"
+    override def label: String = typeLabel
+  }
 
-  private def sumRepr[T](typeLabel: String, s: Mirror.SumOf[T], reprs: => List[Repr[?]]): Repr[T] =
-    new Repr[T] {
-      override def repr(t: T): String =
-        reprs(s.ordinal(t)).asInstanceOf[Repr[Any]].repr(t)
+  private def sumRepr[T](
+      typeLabel: String,
+      s: Mirror.SumOf[T],
+      reprs: => List[Repr[?]]
+    ): Repr[T] = new Repr[T] {
+    override def repr(t: T): String =
+      reprs(s.ordinal(t)).asInstanceOf[Repr[Any]].repr(t)
 
-      override def label: String = typeLabel
-    }
+    override def label: String = typeLabel
+  }
 
   private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
     inline erasedValue[T] match

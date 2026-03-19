@@ -95,7 +95,7 @@ class ReprSpec extends AnyFunSuite with Matchers {
     mapped(ord) shouldBe TupMap("hi")
   }
 
-  test("Typce class mapping") {
+  test("Type class mapping") {
     trait Ev[T] {
       def foo(t: T): String
     }
@@ -130,8 +130,8 @@ class ReprSpec extends AnyFunSuite with Matchers {
       inline scala.compiletime.erasedValue[Tup] match
         case _: EmptyTuple => EmptyTuple
         case _: (h *: t) =>
-          val head = zipped.asInstanceOf[(h, Ev[h]) *: WithEvs[t]].head
-          val tail = zipped.asInstanceOf[(h, Ev[h]) *: WithEvs[t]].tail
+          val head = zipped.head.asInstanceOf[(h, Ev[h])]
+          val tail = zipped.tail.asInstanceOf[WithEvs[t]]
           val (v, ev) = head
           (v, ev.foo(v)) *: eval[t](tail)
 
