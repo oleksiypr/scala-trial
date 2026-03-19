@@ -61,7 +61,46 @@ The starting point was deliberately minimal. The only goal of the first step was
 case class Foo() derives Repr
 ```
 
-Nothing more. No output format, no field labels, no recursive support. Just a type class that the compiler could accept as a derivation target. Once that compiled, a `repr` extension method was added so that `foo.repr` was actually callable — turning the compiler experiment into something a test could assert against.
+Nothing more. No output format, no field labels, no recursive support. Just a type class that the compiler could accept as a derivation target.
+
+### Bootstrap: minimal Repr trait and derivation
+
+The minimal implementation to make the compiler accept `derives Repr`:
+
+```scala
+package progmeta
+
+import scala.deriving.Mirror
+
+trait Repr[T] {
+  def repr(t: T): String
+  def label: String
+}
+
+object Repr {
+  inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
+    new Repr[T] {
+      override def repr(t: T): String = t.toString
+      override def label: String = m.MirroredLabel.toString
+    }
+}
+```
+
+This minimal `derived` method:
+- Accepts a `Mirror.Of[T]` (provided by the compiler for case classes)
+- Returns a `Repr[T]` instance
+- Uses `toString` for output (no formatting)
+- Extracts the type label from the mirror's metadata
+
+This was enough. `case class Foo() derives Repr` now compiled. But `foo.repr` was not callable without a `repr` method on `T`. The next step added an extension method so that `foo.repr` worked:
+
+```scala
+extension [T](t: T) {
+  def repr(using r: Repr[T]): String = r.repr(t)
+}
+```
+
+Now the experiment was complete: the type class could be derived, and values could call `.repr` to see their representation. The test could run.
 
 ## Product Derivation
 
@@ -195,10 +234,14 @@ private def sumRepr[T](
 }
 ```
 
-For this to work, `summonReprs` had to produce a `Repr` for each subtype of `Option[Boolean]` — meaning it needed `Repr[Some[Boolean]]` and `Repr[None.type]`. The first attempt used `summonInline` directly:
+For this to work, `summonReprs` had to recursively produce a `Repr` for every element in the tuple of subtypes (for `Option[Boolean]`: `Some[Boolean]` and `None.type`). The first attempt looked like this:
 
 ```scala
-case _: (elem *: elems) => summonInline[Repr[elem]] :: summonReprs[elems]
+private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
+  inline erasedValue[T] match
+    case _: EmptyTuple => Nil
+    case _: (elem *: elems) =>
+      summonInline[Repr[elem]] :: summonReprs[elems]
 ```
 
 This compiled for `Bar` (field types are primitives with explicit instances), but failed when deriving `Repr[Option[Boolean]]`:
@@ -211,15 +254,18 @@ No given instance of type progmeta.Repr[Some[Boolean]] was found
 
 ### Step 3 — add Mirror fallback; challenge: ambiguous given instances
 
-The natural fix was to fall back to `Mirror`-based derivation when no explicit `Repr[elem]` was in scope:
+The natural fix was to fall back to `Mirror`-based derivation when no explicit `Repr[elem]` was in scope. In full recursive form:
 
 ```scala
-case _: (elem *: elems) =>
-  val head = summonFrom {
-    case repr: Repr[elem]       => repr
-    case m: Mirror.Of[elem]     => derived(using m)
-  }
-  head :: summonReprs[elems]
+private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
+  inline erasedValue[T] match
+    case _: EmptyTuple => Nil
+    case _: (elem *: elems) =>
+      val head = summonFrom {
+        case repr: Repr[elem]   => repr
+        case m: Mirror.Of[elem] => derived(using m)
+      }
+      head :: summonReprs[elems]
 ```
 
 This resolved the missing-instance problem. But a new test was then added that derived `Repr[Some[Boolean]]` and `Repr[None.type]` as explicit local givens:
@@ -245,23 +291,34 @@ The fundamental issue: `case repr: Repr[elem]` inside an inline lambda sees the 
 
 ### Step 4 — final solution: resolve each element with a concrete type
 
-The fix was to extract element resolution into a separate `private inline def` that is called with a concrete type at each inline expansion site:
+The fix was to extract element resolution into a separate `private inline def` that is called with a concrete type at each inline expansion site.
+
+Before (ambiguous because `elem` is still abstract):
 
 ```scala
-// before: elem is abstract inside the lambda — implicit search is too broad
-case _: (elem *: elems) =>
-  val head = summonFrom {
-    case repr: Repr[elem]   => repr     // ← elem still abstract here
-    case m: Mirror.Of[elem] => derived(using m)
-  }
-  head :: summonReprs[elems]
+private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
+  inline erasedValue[T] match
+    case _: EmptyTuple => Nil
+    case _: (elem *: elems) =>
+      val head = summonFrom {
+        case repr: Repr[elem]   => repr     // <- elem still abstract here
+        case m: Mirror.Of[elem] => derived(using m)
+      }
+      head :: summonReprs[elems]
+```
 
-// after: sumRepr[elem] is inlined separately for each concrete elem
-case _: (elem *: elems) => sumRepr[elem] :: summonReprs[elems]
+After (each element is resolved through `sumRepr[Elem]` with a concrete type):
+
+```scala
+private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
+  inline erasedValue[T] match
+    case _: EmptyTuple => Nil
+    case _: (elem *: elems) =>
+      sumRepr[elem] :: summonReprs[elems]
 
 private inline def sumRepr[Elem]: Repr[Elem] =
   summonFrom {
-    case r: Repr[Elem]      => r          // ← Elem is concrete here
+    case r: Repr[Elem]      => r          // <- Elem is concrete here
     case m: Mirror.Of[Elem] => Repr.derived[Elem]
   }
 ```
@@ -309,6 +366,19 @@ After the recursion fix, a refactoring step tried to remove laziness from a diff
 ### Solution: fix warning placement
 
 The warning was resolved by finding the correct placement for the lazy evaluation — not at the call site where it was originally moved, but at the boundary where recursion was actually triggered. The final shape kept `lazy val reprs` in `derived`, which is the point closest to where cyclic resolution can occur.
+
+```scala
+// after: keep laziness at the derivation boundary where recursive graphs are built
+inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
+  val label = constValue[m.MirroredLabel]
+  lazy val reprs = summonReprs[m.MirroredElemTypes]
+  inline m match
+    case _: Mirror.ProductOf[T] =>
+      val argNames = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
+      productRepr[T](label, argNames, reprs)
+    case s: Mirror.SumOf[T] =>
+      sumRepr[T](label, s, reprs)
+```
 
 This back-and-forth is typical of metaprogramming work: evaluation order matters in ways that are not immediately visible from the types alone. Compiler feedback — warnings included — was part of finding the right answer.
 
