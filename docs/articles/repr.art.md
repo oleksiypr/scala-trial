@@ -281,10 +281,10 @@ inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
     case _: Mirror.SumOf[T] => sumRepr[T](label)
 ```
 
-3. **Sums: concrete first, generic next**
+3. **Sums**
 
+##### Step 1: concrete first, generic next
 At this point, the concrete `Option` pattern match is already green, so I keep it as a safe baseline and then generalize step by step. Instead of hardcoding `Some` and `None`, I precompute subtype representations with `summonReprs[m.MirroredElemTypes]` and let `Mirror.SumOf` tell me which subtype is active via `ordinal`. That way, a runtime value maps to the correct subtype index, and I can dispatch through `reprs` without writing case-by-case pattern matches. The final wiring is to compute `reprs` once in `derived[T]` and share it between both product and sum branches.
-
 
 
 ```scala
@@ -325,22 +325,77 @@ inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
       sumRepr[T](label, s, reprs)               // reprs now passed to sumRepr too
 ```
 
-First attempt failure at this stage: moving `reprs` to the top of `derived[T]` exposed a compiler error for sums (`No given instance found` for `Repr[Some[Boolean]]`). `summonReprs` still used a single-pass `summonInline`, which could resolve primitive givens but could not derive sum subtypes like `Some[Boolean]` / `None.type` on the spot. The next step introduces a `summonFrom` fallback to close this gap.
+The first attempt failure at this stage: moving `reprs` to the top of `derived[T]` exposed a compiler error for sums :
 
-The next implementation step added this fallback in `sumRepr`:
+```
+No given instance of type progmeta.Repr[Some[Boolean]] was found
+```
+
+Here `summonReprs` still used a single-pass `summonInline`, which could resolve primitives and prducts for `Mirror.ProductOf` givens but could not derive sum subtypes like `Some[Boolean]` / `None.type` on the spot becasue we are in `Mirror.SumOf[T]` case while `Some` is a product.
+
+Thus, we need to resolve the `Repr` for each subtype case recursively.
+
+In other words `Some[Boolean]` and `None.type` are themselves derivable types of `Mirror.ProductOf`, hence we need to reuse the dervication we already did for `Bar` and `Baz`.
+
+The next step introduces a `summonFrom` fallback to close this gap.
+
+### Step 2 — add Mirror fallback; challenge: ambiguous given instances
+
+The natural fix was to fall back to `Mirror`-based derivation when no explicit `Repr[elem]` was in scope. In full recursive form:
 
 ```scala
-  private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
-    inline erasedValue[T] match
-      case _: EmptyTuple => Nil
-      case _: (elem *: elems)  => sumRepr[elem] :: summonReprs[elems]
-
-  private inline def sumRepr[Elem]: Repr[Elem] =
-    summonFrom {
-      case r: Repr[Elem]      => r
-      case m: Mirror.Of[Elem] => Repr.derived[Elem]
-    }
+private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
+  inline erasedValue[T] match
+    case _: EmptyTuple => Nil
+    case _: (elem *: elems) =>
+      val head = summonFrom {
+        case repr: Repr[elem]   => repr // <- elem is abstract here
+        case m: Mirror.Of[elem] => derived(using m)
+      }
+      head :: summonReprs[elems]
 ```
+
+This resolved the missing-instance problem. The test, however, fails for:
+
+```scala
+  test("Repr for Some") {
+    given R: Repr[Some[Boolean]] = Repr.derived
+    given N: Repr[None.type ] = Repr.derived
+
+    R.label shouldBe "Some"
+    N.label shouldBe "None"
+  }
+```
+with a compiler error:
+
+```
+[E172] Type Error: ReprSpec.scala:...
+Ambiguous given instances: both given instance N and given instance R
+match type progmeta.Repr[elem]
+```
+
+The fundamental issue: `case repr: Repr[elem]` inside an inline lambda sees the full surrounding scope, and when `elem` is still abstract, any `Repr[X]` in scope is a candidate match.
+
+### Step 3 — final solution: resolve each element with a concrete type
+
+The fix is to extract element resolution into a separate `private inline def` that is called with a concrete type at each inline expansion site.
+
+Each element is resolved through `sumRepr[Elem]` with a concrete type:
+
+```scala
+private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
+  inline erasedValue[T] match
+    case _: EmptyTuple      => Nil
+    case _: (elem *: elems) => sumRepr[elem] :: summonReprs[elems]
+
+private inline def sumRepr[Elem]: Repr[Elem] =
+  summonFrom {
+    case r: Repr[Elem]      => r  // <- Elem is concrete here
+    case m: Mirror.Of[Elem] => Repr.derived[Elem]
+  }
+```
+
+Because `sumRepr[elem]` is inlined independently for each concrete `elem` (e.g., `Some[Boolean]`, then `None.type`, then `Boolean`), the implicit search inside `sumRepr` sees only one matching `Repr` per concrete type — the ambiguity disappears.
 
 This closed the missing-instance gap (`Some[Boolean]` / `None.type` can now be derived). The following step then refines this further to avoid ambiguous givens by resolving each element through a concrete helper type parameter.
 
@@ -353,233 +408,6 @@ The method recursively resolves a `Repr` instance for every element type in the 
 lazy val reprs = summonReprs[m.MirroredElemTypes]
 ```
 
-
-## Product Derivation
-
-With `Foo()` working, the first meaningful test raised the bar:
-
-```scala
-bar.repr shouldBe "Bar(n: Int = 1, m: Int = 2)"
-```
-
-### Challenge: compiler error when Bar derives Repr
-
-To get there, `Bar` was added to the test companion object:
-
-```scala
-case class Bar(n: Int, m: Int) derives Repr
-```
-
-This immediately produced a compiler error:
-
-```
-[E182] Type Error: ReprSpec.scala:9:33
-```
-
-The message indicated the `derived` implementation could not handle a multi-element product. At that point `derived` only handled the simplest case — it could not yet enumerate field types and resolve a `Repr` per element. The test did not even run; it did not compile.
-
-### Hardcoding: first pass at productRepr
-
-The immediate goal was to get the test to compile and pass. The approach was to hardcode the exact shape needed for `Bar(n, m)`:
-
-```scala
-private def productRepr[T](typeLabel: String): Repr[T] = new Repr[T] {
-  override def repr(t: T): String =
-    // Hardcoded for Bar specifically: two Int fields named "n" and "m"
-    val argValues = t.asInstanceOf[Product].productIterator.toList
-    val n = argValues(0)
-    val m = argValues(1)
-    s"$typeLabel(n: Int = $n, m: Int = $m)"
-  override def label: String = typeLabel
-}
-```
-
-This hardcoded version worked: `Bar(1, 2).repr` returned `"Bar(n: Int = 1, m: Int = 2)"`. The test passed. But the approach was brittle — it only worked for `Bar`, and only when both fields were `Int`. The duplication between the hardcoded field names and the actual case class definition was the signal to refactor.
-
-The first step toward green was deliberate and honest: field labels were hardcoded as `Int` to satisfy the compiler and make one test pass. The commit message was explicit — "hardcoded agrLabels as Int to make the test green". This is not a shortcut to hide; it is a TDD technique. Get green, understand the shape of the problem, then refactor.
-
-The test then pushed further by adding a second field to `Bar(n, m)`. The hardcoded approach immediately broke, which was the correct signal to refactor.
-
-The refactored solution introduced `Repr[Int]`, `Repr[Double]`, and `Repr[Boolean]` as primitive instances, and rewired `productRepr` to work for any product type:
-
-```scala
-private def productRepr[T](
-    typeLabel: String,
-    argNames: List[String],
-    reprs: => List[Repr[?]]
-  ): Repr[T] = new Repr[T] {
-  override def repr(t: T): String =
-    val argValues = t.asInstanceOf[Product].productIterator.toList
-    val args = argNames.lazyZip(reprs).lazyZip(argValues)
-      .map { (name, repr, value) =>
-        s"$name: ${repr.label} = ${repr.asInstanceOf[Repr[Any]].repr(value)}"
-      }
-    s"$typeLabel(${args.mkString(", ")})"
-  override def label: String = typeLabel
-}
-```
-
-Now the mechanism:
-- Extracts field labels from `MirroredElemLabels` at compile time (not hardcoded strings)
-- Resolves a `Repr` instance per element type via `summonReprs` (not assuming `Int`)
-- Zips names, instances, and runtime values together to format the output
-
-Now `Bar(1, 2)` works, `Baz(1, Bar(2, 3))` works, and any product type works. Nested products — where one field is itself a case class — work for free: the same mechanism simply resolves the inner type's derived `Repr` instead of a primitive one.
-
-## Sum Derivation
-
-The first sum test introduced `Option[Boolean]`:
-
-```scala
-given Repr[Option[Boolean]] = Repr.derived
-Some(true).repr shouldBe "Some(value: Boolean = true)"
-None.repr shouldBe "None()"
-```
-
-### Step 1 — trivial hardcoded solution
-
-Both product and sum derivation started with hardcoded, type-specific implementations. This phase established the pattern before generalizing.
-
-**For products**, the hardcoded approach handled only `Bar`:
-
-```scala
-private def productRepr[T](typeLabel: String): Repr[T] = new Repr[T] {
-  override def repr(t: T): String =
-    // Hardcoded: Bar(n, m) with Int fields
-    val argValues = t.asInstanceOf[Product].productIterator.toList
-    s"$typeLabel(n: Int = ${argValues(0)}, m: Int = ${argValues(1)})"
-  override def label: String = typeLabel
-}
-```
-
-**For sums**, the hardcoded approach handled only `Option[Boolean]`:
-
-```scala
-private def sumRepr[T](typeLabel: String): Repr[T] =
-  new Repr[T] {
-    override def repr(t: T): String = t match
-      case Some(v) => s"Some(value: Boolean = $v)"
-      case None    => "None()"
-    override def label: String = typeLabel
-  }
-```
-
-Both implementations were deliberately concrete. The product version hardcoded field names and assumed `Int` types. The sum version hardcoded variant names and assumed `Boolean` values. Neither could handle variations — adding a second field to `Bar`, or deriving `Some[String]`, would require editing the code itself.
-
-This brittleness was the signal to generalize. The commit messages show the pattern: "hardcoded agrLabels as Int to make the test green" and "Trivial implementation: sumRepr to correctly handle Option cases". The duplication between test expectations and code was the intentional redundancy that TDD uses to drive refactoring.
-
-Once both tests passed with their hardcoded implementations, the next steps moved toward generalization — one at a time.
-
-### Step 2 — move to ordinal dispatch; challenge: missing Repr for subtypes
-
-The design was evolved so that `sumRepr` would work generically for any sum type by dispatching through the ordinal of the active variant:
-
-```scala
-private def sumRepr[T](
-    typeLabel: String,
-    s: Mirror.SumOf[T],
-    reprs: => List[Repr[?]]
-  ): Repr[T] = new Repr[T] {
-  override def repr(t: T): String =
-    reprs(s.ordinal(t)).asInstanceOf[Repr[Any]].repr(t)
-  override def label: String = typeLabel
-}
-```
-
-For this to work, `summonReprs` had to recursively produce a `Repr` for every element in the tuple of subtypes (for `Option[Boolean]`: `Some[Boolean]` and `None.type`). The first attempt looked like this:
-
-```scala
-private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
-  inline erasedValue[T] match
-    case _: EmptyTuple => Nil
-    case _: (elem *: elems) =>
-      summonInline[Repr[elem]] :: summonReprs[elems]
-```
-
-This compiled for `Bar` (field types are primitives with explicit instances), but failed when deriving `Repr[Option[Boolean]]`:
-
-```
-No given instance of type progmeta.Repr[Some[Boolean]] was found
-```
-
-`Some[Boolean]` and `None.type` are not primitives. They are themselves derivable types, but no one had derived them explicitly. The single-pass `summonInline` had no way to derive them on the spot.
-
-### Step 3 — add Mirror fallback; challenge: ambiguous given instances
-
-The natural fix was to fall back to `Mirror`-based derivation when no explicit `Repr[elem]` was in scope. In full recursive form:
-
-```scala
-private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
-  inline erasedValue[T] match
-    case _: EmptyTuple => Nil
-    case _: (elem *: elems) =>
-      val head = summonFrom {
-        case repr: Repr[elem]   => repr
-        case m: Mirror.Of[elem] => derived(using m)
-      }
-      head :: summonReprs[elems]
-```
-
-This resolved the missing-instance problem. But a new test was then added that derived `Repr[Some[Boolean]]` and `Repr[None.type]` as explicit local givens:
-
-```scala
-test("Repr for Some") {
-  given R: Repr[Some[Boolean]] = Repr.derived
-  given N: Repr[None.type]     = Repr.derived
-  R.label shouldBe "Some"
-  N.label shouldBe "None"
-}
-```
-
-When the compiler tried to compile `given R: Repr[Some[Boolean]] = Repr.derived`, it expanded `summonReprs` inline and reached the `summonFrom` branch. At that point `elem` was still abstract — a type variable, not yet resolved to a concrete type. With both `R: Repr[Some[Boolean]]` and `N: Repr[None.type]` visible in the outer scope, the implicit search found two candidates for `Repr[elem]` and could not choose:
-
-```
-[E172] Type Error: ReprSpec.scala:39:35
-Ambiguous given instances: both given instance N and given instance R
-match type progmeta.Repr[elem]
-```
-
-The fundamental issue: `case repr: Repr[elem]` inside an inline lambda sees the full surrounding scope, and when `elem` is still abstract, any `Repr[X]` in scope is a candidate match.
-
-### Step 4 — final solution: resolve each element with a concrete type
-
-The fix was to extract element resolution into a separate `private inline def` that is called with a concrete type at each inline expansion site.
-
-Before (ambiguous because `elem` is still abstract):
-
-```scala
-private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
-  inline erasedValue[T] match
-    case _: EmptyTuple => Nil
-    case _: (elem *: elems) =>
-      val head = summonFrom {
-        case repr: Repr[elem]   => repr     // <- elem still abstract here
-        case m: Mirror.Of[elem] => derived(using m)
-      }
-      head :: summonReprs[elems]
-```
-
-After (each element is resolved through `sumRepr[Elem]` with a concrete type):
-
-```scala
-private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
-  inline erasedValue[T] match
-    case _: EmptyTuple => Nil
-    case _: (elem *: elems) =>
-      sumRepr[elem] :: summonReprs[elems]
-
-private inline def sumRepr[Elem]: Repr[Elem] =
-  summonFrom {
-    case r: Repr[Elem]      => r          // <- Elem is concrete here
-    case m: Mirror.Of[Elem] => Repr.derived[Elem]
-  }
-```
-
-Because `sumRepr[elem]` is inlined independently for each concrete `elem` (e.g., `Some[Boolean]`, then `None.type`, then `Boolean`), the implicit search inside `sumRepr` sees only one matching `Repr` per concrete type — the ambiguity disappears.
-
-### Refactor: label was added, removed, then added back
-
-During this phase, a `label` method was added to the `Repr` trait, then removed after it appeared unused, then added back when a test checking `R.label shouldBe "Option"` proved it was in fact needed. That cycle — add, remove, re-add — is not noise. It shows the design being honest about what is actually required versus what was assumed to be required. The tests were the authority, not the designer's intuition.
 
 ## Recursion and Refactoring
 

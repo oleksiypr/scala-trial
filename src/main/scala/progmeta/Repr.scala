@@ -57,18 +57,16 @@ object Repr {
 
   private def sumRepr[T](
       typeLabel: String,
-      s: Mirror.SumOf[T],
+      sum: Mirror.SumOf[T],
       reprs: => List[Repr[?]]
     ): Repr[T] = new Repr[T] {
-    override def repr(t: T): String =
-      reprs(s.ordinal(t)).asInstanceOf[Repr[Any]].repr(t)
-
+    override def repr(t: T): String = reprs(sum.ordinal(t)).asInstanceOf[Repr[Any]].repr(t)
     override def label: String = typeLabel
   }
 
   private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
     inline erasedValue[T] match
-      case _: EmptyTuple => Nil
+      case _: EmptyTuple       => Nil
       case _: (elem *: elems)  => sumRepr[elem] :: summonReprs[elems]
 
   private inline def sumRepr[Elem]: Repr[Elem] =
