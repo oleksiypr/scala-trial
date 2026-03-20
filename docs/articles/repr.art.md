@@ -196,8 +196,11 @@ After sums, let's back to products. Now we want a labeled product parameter list
 ```scala
 private def productRepr[T](typeLabel: String): Repr[T] = new Repr[T] {
   override def repr(t: T): String =
+    // Hardcoded for Bar specifically: two Int fields named "n" and "m"
     val argValues = t.asInstanceOf[Product].productIterator.toList
-    s"$typeLabel(n: Int = ${argValues(0)}, m: Int = ${argValues(1)})"
+    val n = argValues(0)
+    val m = argValues(1)
+    s"$typeLabel(n: Int = $n, m: Int = $m)"
   override def label: String = typeLabel
 }
 ```
@@ -280,16 +283,35 @@ inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
 
 3. **Sums: concrete first, generic next**
 
+At this point, the concrete `Option` pattern match is already green, so I keep it as a safe baseline and then generalize step by step. Instead of hardcoding `Some` and `None`, I precompute subtype representations with `summonReprs[m.MirroredElemTypes]` and let `Mirror.SumOf` tell me which subtype is active via `ordinal`. That way, a runtime value maps to the correct subtype index, and I can dispatch through `reprs` without writing case-by-case pattern matches. The final wiring is to compute `reprs` once in `derived[T]` and share it between both product and sum branches.
+
+
+
 ```scala
 // concrete green
 case Some(v) => s"Some(value: Boolean = $v)"
 case None    => "None()"
 
 // generic sum dispatch
-reprs(s.ordinal(t)).asInstanceOf[Repr[Any]].repr(t)
+reprs(sum.ordinal(t)).asInstanceOf[Repr[Any]].repr(t)
+```
+The key to the generic solution is `s.ordinal(t)`, `sum: Mirror.SumOf[T]` — a compile-time description of a sum type. Its `ordinal` method is the runtime side of that description: given a value `t`, it returns the index of the active case in the sum. For `Option[Boolean]`, `Some(true)` has ordinal `0` and `None` has ordinal `1`. That index selects the right `Repr` from `reprs`. No pattern match on `Some` or `None` is needed — the mirror knows the structure, and `ordinal` maps any value to its position in it.
+
+At this stage, `sumRepr` is implemented as:
+
+```scala
+private def sumRepr[T](
+    typeLabel: String,
+    sum: Mirror.SumOf[T],
+    reprs: List[Repr[?]]
+  ): Repr[T] = new Repr[T] {
+  override def repr(t: T): String =
+    reprs(s.ordinal(t)).asInstanceOf[Repr[Any]].repr(t)
+  override def label: String = typeLabel
+}
 ```
 
-`reprs` does not appear from nowhere. It is computed in `derived[T]` using `summonReprs` and passed down into `sumRepr`. Before this step, `reprs` was computed only inside the product branch. To make it available to sums too, it was moved to the top of `derived[T]`:
+We can use it for derivation:
 
 ```scala
 inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
@@ -303,10 +325,26 @@ inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
       sumRepr[T](label, s, reprs)               // reprs now passed to sumRepr too
 ```
 
-`summonReprs` recursively resolves a `Repr` instance for every element type in the mirror's element tuple. For a product like `Bar`, those are the field types (`Int`, `Int`). For a sum like `Option[Boolean]`, those are the subtype cases (`Some[Boolean]`, `None.type`). The result is a `List[Repr[?]]` indexed by position — exactly what `s.ordinal(t)` indexes into at runtime.
+First attempt failure at this stage: moving `reprs` to the top of `derived[T]` exposed a compiler error for sums (`No given instance found` for `Repr[Some[Boolean]]`). `summonReprs` still used a single-pass `summonInline`, which could resolve primitive givens but could not derive sum subtypes like `Some[Boolean]` / `None.type` on the spot. The next step introduces a `summonFrom` fallback to close this gap.
 
-The key to the generic solution is `s.ordinal(t)`. `s` here is a `Mirror.SumOf[T]` — a compile-time description of a sum type. Its `ordinal` method is the runtime side of that description: given a value `t`, it returns the index of the active case in the sum. For `Option[Boolean]`, `Some(true)` has ordinal `0` and `None` has ordinal `1`. That index selects the right `Repr` from `reprs`. No pattern match on `Some` or `None` is needed — the mirror knows the structure, and `ordinal` maps any value to its position in it.
+The next implementation step added this fallback in `sumRepr`:
 
+```scala
+  private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
+    inline erasedValue[T] match
+      case _: EmptyTuple => Nil
+      case _: (elem *: elems)  => sumRepr[elem] :: summonReprs[elems]
+
+  private inline def sumRepr[Elem]: Repr[Elem] =
+    summonFrom {
+      case r: Repr[Elem]      => r
+      case m: Mirror.Of[Elem] => Repr.derived[Elem]
+    }
+```
+
+This closed the missing-instance gap (`Some[Boolean]` / `None.type` can now be derived). The following step then refines this further to avoid ambiguous givens by resolving each element through a concrete helper type parameter.
+
+The method recursively resolves a `Repr` instance for every element type in the mirror's element tuple. For a product like `Bar`, those are the field types (`Int`, `Int`). For a sum like `Option[Boolean]`, those are the subtype cases (`Some[Boolean]`, `None.type`). The result is a `List[Repr[?]]` indexed by position — exactly what `s.ordinal(t)` indexes into at runtime.
 
 4. **Recursion: defer evaluation at the right boundary**
 
@@ -617,4 +655,3 @@ The most important lesson is that each challenge surfaced only when a test tried
 ---
 
 Note: this article is maintained as a dedicated topic file under `docs/articles/` and follows the plan in `docs/plans/repr.plan.md`.
-
