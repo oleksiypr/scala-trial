@@ -160,8 +160,8 @@ The important change from Case 1 was in `derived[T]`. Before `Option`, `derived[
 inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
   val label = constValue[m.MirroredLabel]
   inline m match
-    case mp: Mirror.ProductOf[T] => productRepr[T](label)
-    case _: Mirror.Of[T]         => sumRepr[T](label)
+    case _: Mirror.ProductOf[T] => productRepr[T](label)
+    case _: Mirror.SumOf[T]     => sumRepr[T](label)
 ```
 
 where
@@ -217,7 +217,7 @@ inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
   val agrLabels = argNames.map(_ => "Int")
   inline m match
     case _: Mirror.ProductOf[T] => productRepr[T](label, argNames, agrLabels)
-    case _: Mirror.Of[T]        => sumRepr[T](label)
+    case _: Mirror.SumOf[T]     => sumRepr[T](label)
 
 private def productRepr[T](typeLabel: String, argNames: List[String], agrLabels: List[String]): Repr[T] =
   new Repr[T] {
@@ -239,8 +239,46 @@ val agrLabels = constValueTuple[m.MirroredElemTypes].toList.map(_.toString)
 
 That did not compile for `Bar(n: Int, m: Int)`: `Int` is not a constant type, so it cannot be extracted with `constValueTuple` that way. To keep moving, I replaced it with the smallest working approximation: treat every field label as `"Int"`. That was enough for the current test and made the first product step green.
 
+2. **Nested products: `Baz(n: Int, bar: Bar)` — replace hardcoded `"Int"` with `summonReprs`**
 
-2. **Sums: concrete first, generic next**
+```scala
+case class Baz(n: Int, bar: Bar) derives Repr
+
+test("Repr for Baz(1, Bar(2, 3))") {
+  val baz = Baz(1, Bar(2, 3))
+  baz.repr shouldBe "Baz(n: Int = 1, bar: Bar = Bar(n: Int = 2, m: Int = 3))"
+}
+```
+
+`Baz` has a `bar: Bar` field. The hardcoded `agrLabels = argNames.map(_ => "Int")` approach could not handle this — it would produce `bar: Int = ...` instead of `bar: Bar = Bar(...)`. I needed to resolve the actual `Repr` for each field type at compile time.
+
+I replaced the hardcoded type labels with `summonReprs[m.MirroredElemTypes]` inside the product branch, and added primitive `Repr` givens so the implicit search had something to find:
+
+```scala
+given Repr[Int] with
+  override def repr(t: Int): String = t.toString
+  override def label: String = "Int"
+
+private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
+  inline erasedValue[T] match
+    case _: EmptyTuple          => Nil
+    case _: (elem *: elems)     => summonInline[Repr[elem]] :: summonReprs[elems]
+```
+It walks the field type tuple at compile time using `summonInline[Repr[elem]]` for each element. For `Int` it finds `given Repr[Int]`. For `Bar` it finds `Repr[Bar]` because `Bar derives Repr` causes the compiler to synthesize a `given Repr[Bar]` via `Repr.derived` — so `summonInline` can locate it. This is what made `Baz` work: the `bar: Bar` field gets its own recursively derived `Repr`, and the label comes from `Repr[Bar].label` rather than a hardcoded string.
+
+
+```scala
+inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
+  val label = constValue[m.MirroredLabel]
+  inline m match
+    case _: Mirror.ProductOf[T] =>
+      val argNames = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
+      val reprs    = summonReprs[m.MirroredElemTypes]   // replaces argNames.map(_ => "Int")
+      productRepr[T](label, argNames, reprs)
+    case _: Mirror.SumOf[T] => sumRepr[T](label)
+```
+
+3. **Sums: concrete first, generic next**
 
 ```scala
 // concrete green
@@ -251,19 +289,26 @@ case None    => "None()"
 reprs(s.ordinal(t)).asInstanceOf[Repr[Any]].repr(t)
 ```
 
-2. **Products: first make it pass, then make it generic**
+`reprs` does not appear from nowhere. It is computed in `derived[T]` using `summonReprs` and passed down into `sumRepr`. Before this step, `reprs` was computed only inside the product branch. To make it available to sums too, it was moved to the top of `derived[T]`:
 
 ```scala
-// hardcoded green for Bar
-s"$typeLabel(n: Int = ${argValues(0)}, m: Int = ${argValues(1)})"
-
-// refactored generic product formatting
-val args = argNames.lazyZip(reprs).lazyZip(argValues).map { (name, repr, value) =>
-  s"$name: ${repr.label} = ${repr.asInstanceOf[Repr[Any]].repr(value)}"
-}
+inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
+  val label = constValue[m.MirroredLabel]
+  val reprs = summonReprs[m.MirroredElemTypes]   // moved here from inside the product branch
+  inline m match
+    case _: Mirror.ProductOf[T] =>
+      val argNames = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
+      productRepr[T](label, argNames, reprs)
+    case s: Mirror.SumOf[T] =>
+      sumRepr[T](label, s, reprs)               // reprs now passed to sumRepr too
 ```
 
-3. **Recursion: defer evaluation at the right boundary**
+`summonReprs` recursively resolves a `Repr` instance for every element type in the mirror's element tuple. For a product like `Bar`, those are the field types (`Int`, `Int`). For a sum like `Option[Boolean]`, those are the subtype cases (`Some[Boolean]`, `None.type`). The result is a `List[Repr[?]]` indexed by position — exactly what `s.ordinal(t)` indexes into at runtime.
+
+The key to the generic solution is `s.ordinal(t)`. `s` here is a `Mirror.SumOf[T]` — a compile-time description of a sum type. Its `ordinal` method is the runtime side of that description: given a value `t`, it returns the index of the active case in the sum. For `Option[Boolean]`, `Some(true)` has ordinal `0` and `None` has ordinal `1`. That index selects the right `Repr` from `reprs`. No pattern match on `Some` or `None` is needed — the mirror knows the structure, and `ordinal` maps any value to its position in it.
+
+
+4. **Recursion: defer evaluation at the right boundary**
 
 ```scala
 // fix recursion/evaluation-order problems
