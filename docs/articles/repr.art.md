@@ -176,29 +176,22 @@ private def productRepr[T](typeLabel: String): Repr[T] = new Repr[T] {
 
 At that stage both branches were still hardcoded. The product branch returned the old `"Foo()"` behavior, while the sum branch returned the new `Option`-specific string. The key step was not generality yet — it was teaching `derived[T]` to distinguish products from sums.
 
-Once that behavior was confirmed, I replaced the special-case implementation with generic sum dispatch:
+After bootstrap, the next stages are no longer bootstrap:
+- sum-type development (`Option`) comes next and is described in `## Sum Derivation`
+- product evolution (`Bar`, then nested products) follows and is described in `## Product Derivation`
 
-```scala
-private def sumRepr[T](
-    typeLabel: String,
-    s: Mirror.SumOf[T],
-    reprs: => List[Repr[?]]
-  ): Repr[T] = new Repr[T] {
-  override def repr(t: T): String =
-    reprs(s.ordinal(t)).asInstanceOf[Repr[Any]].repr(t)
-  override def label: String = typeLabel
-}
-```
 
-At that point the implementation no longer knew anything specific about `Option`: it worked by selecting the active subtype representation through the sum ordinal.
+### Development process at a glance (after the bootstrap step)
 
-**Case 3: `Bar` (products).**
+1. **Product: several parameters**
+
+
 ```scala
 case class Bar(n: Int, m: Int) derives Repr
 Bar(1, 2).repr shouldBe "Bar(n: Int = 1, m: Int = 2)"
 ```
 
-After sums, I came back to products and wanted labeled product output instead of plain `toString`. The first version that made this kind of test pass was deliberately hardcoded:
+After sums, let's back to products. Now we want a labeled product parameter list instead of  `()`. Assume all parameters are of `Int` type:
 
 ```scala
 private def productRepr[T](typeLabel: String): Repr[T] = new Repr[T] {
@@ -209,9 +202,13 @@ private def productRepr[T](typeLabel: String): Repr[T] = new Repr[T] {
 }
 ```
 
-This implementation corresponds to the `Bar` expectation above. I hardcoded the field names (`n`, `m`) and field type (`Int`) because that was the smallest change that turned the test green. It was not meant to be final — it was just the fastest way to confirm the output shape I wanted.
+I hardcoded the field names (`n`, `m`) and field type (`Int`) because that was the smallest change that turned the test green. It was not meant to be final — it was just the fastest way to confirm the output shape I wanted.
 
-The important change from Case 2 was another change in `derived[T]`. It already knew how to distinguish products from sums. For `Bar`, I changed the product path so it started gathering product metadata and passing it into `productRepr`:
+The next important change from Case 2 is further evolution of `derived[T]`. It already knew how to distinguish products from sums.
+Now, let's gether product metadata and pass it into `productRepr` instead of hardcoded (`n`, `m`).
+
+To do this, we need two more meta-features that provide compile-type infornation: `m.MirroredElemLabels` and `constValueTuple`.
+Unlike `constValue` which is apply-time constant of a singleton type, `constValueTuple` can extract a tuple of constant values from a tuple type. This allows us to get the field names as a tuple of strings at compile time.
 
 ```scala
 inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
@@ -221,56 +218,29 @@ inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
   inline m match
     case _: Mirror.ProductOf[T] => productRepr[T](label, argNames, agrLabels)
     case _: Mirror.Of[T]        => sumRepr[T](label)
+
+private def productRepr[T](typeLabel: String, argNames: List[String], agrLabels: List[String]): Repr[T] =
+  new Repr[T] {
+    override def repr(t: T): String =
+      val argValues = t.asInstanceOf[Product].productIterator.toList
+      val args = argNames.lazyZip(agrLabels).lazyZip(argValues)
+        .map((name, label, value) => s"$name: $label = $value").mkString(", ")
+      s"$typeLabel($args)"
+      
+    override def label: String = typeLabel
+  }
 ```
 
-There was one failed attempt before this green version. I first tried to get the argument type labels from `MirroredElemTypes`:
+There was one failed attempt before this green version. I first tried to get the argument type labels from `m.MirroredElemTypes`:
 
 ```scala
 val agrLabels = constValueTuple[m.MirroredElemTypes].toList.map(_.toString)
 ```
 
-That did not compile for `Bar(n: Int)`: `Int` is not a constant type, so it cannot be extracted with `constValueTuple` that way. To keep moving, I replaced it with the smallest working approximation: treat every field label as `"Int"`. That was enough for the current test and made the first product step green.
+That did not compile for `Bar(n: Int, m: Int)`: `Int` is not a constant type, so it cannot be extracted with `constValueTuple` that way. To keep moving, I replaced it with the smallest working approximation: treat every field label as `"Int"`. That was enough for the current test and made the first product step green.
 
-Once that worked, I made it generic by removing the hardcoded field names and types:
 
-```scala
-private def productRepr[T](
-    typeLabel: String,
-    argNames: List[String],
-    reprs: => List[Repr[?]]
-  ): Repr[T] = new Repr[T] {
-  override def repr(t: T): String =
-    val argValues = t.asInstanceOf[Product].productIterator.toList
-    val args = argNames.lazyZip(reprs).lazyZip(argValues)
-      .map { (name, repr, value) =>
-        s"$name: ${repr.label} = ${repr.asInstanceOf[Repr[Any]].repr(value)}"
-      }
-    s"$typeLabel(${args.mkString(", ")})"
-  override def label: String = typeLabel
-}
-```
-
-Later, I updated the product branch of `derived[T]` again so that it could pass both field names and recursively derived field representations into the generalized `productRepr`:
-
-```scala
-inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
-  val label = constValue[m.MirroredLabel]
-  lazy val reprs = summonReprs[m.MirroredElemTypes]
-  inline m match
-    case _: Mirror.ProductOf[T] =>
-      val argNames = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
-      productRepr[T](label, argNames, reprs)
-```
-
-This is the point where generic product derivation becomes real: `derived[T]` stops building product output from hardcoded `"Int"` labels and starts building a product-specific representation from compile-time field metadata plus recursively derived field type classes.
-
-At that point `Bar` was no longer special: any product type with supported field representations could be derived the same way.
-
-Finally, when I introduced recursive types (`Lst`, then `List`), derivation started to recurse too early and produced recursion-related failures/warnings. I fixed that by deferring recursive evidence at the right place: `lazy val reprs` in `derived`.
-
-### Development process at a glance (after the bootstrap step)
-
-1. **Sums: concrete first, generic next**
+2. **Sums: concrete first, generic next**
 
 ```scala
 // concrete green
