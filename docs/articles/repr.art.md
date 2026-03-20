@@ -1,6 +1,6 @@
 # Repr Derivation (Products + Sums): TDD Process Description
 
-This article documents the iterative, test-driven development (TDD) process for building `Repr` derivation for product and sum types, based strictly on local git history of `src/main/scala/progmeta/Repr.scala` and `src/test/scala/progmeta/ReprSpec.scala`.
+This article documents the iterative, test-driven development (TDD) process for building `Repr` derivation for product and sum types.
 
 ## Table of Contents
 - [The Solution](#the-solution)
@@ -20,13 +20,21 @@ At a high level, the final solution does two things:
 ### ReprSpec (compact intent)
 
 ```scala
-test("Repr for Sum type") {
-  Bar(1, 2).repr shouldBe "Bar(n: Int = 1, m: Int = 2)"
+  case class Bar(n: Int, m: Int) derives Repr
+  case class Baz(n: Int, bar: Bar) derives Repr
+  
+  test("Repr for Baz(1, Bar(2, 3))") {
+    val baz = Baz(1, Bar(2, 3))
+    baz.repr shouldBe "Baz(n: Int = 1, bar: Bar = Bar(n: Int = 2, m: Int = 3))"
+  }
 
-  given Repr[Option[Boolean]] = Repr.derived
-  Some(true).repr shouldBe "Some(value: Boolean = true)"
-  None.repr shouldBe "None()"
-}
+  test("Repr for List") {
+    given R: Repr[List[Int]] = Repr.derived
+    R.label shouldBe "List"
+    R.repr(Nil) shouldBe "Nil()"
+    R.repr(List(1)) shouldBe "::(head: Int = 1, next: List = Nil())"
+    R.repr(List(1, 2)) shouldBe "::(head: Int = 1, next: List = ::(head: Int = 2, next: List = Nil()))"
+  }
 ```
 
 ### Repr (compact intent)
@@ -53,54 +61,245 @@ Everything else in the TDD story is about making these two branches correct, rec
 
 ## Background
 
-The older `Repr` implementation had grown organically as part of earlier metaprogramming experiments. Sum type support was attempted on that old implementation, but the approach did not hold up. The commit message said simply "Reverted Sum type implementation" — a clear signal that something fundamental was wrong, not just a minor fix away. Rather than continue patching, the decision was made to rename the existing code to `ReprOld` and start fresh from scratch on Scala 3 `Mirror`.
+I built this feature in small, practical steps.
 
-The starting point was deliberately minimal. The only goal of the first step was to make this compile:
+**Case 1: The simplest product type: `Foo()` (bootstrap).**
+
+At first, we want one simple thing: 
 
 ```scala
 case class Foo() derives Repr
 ```
 
-Nothing more. No output format, no field labels, no recursive support. Just a type class that the compiler could accept as a derivation target.
+should compile.
 
-### Bootstrap: minimal Repr trait and derivation
 
-The minimal implementation to make the compiler accept `derives Repr`:
+The minimum change was just enough for the compiler to accept derivation:
 
 ```scala
-package progmeta
+trait Repr[T] 
 
-import scala.deriving.Mirror
+object Repr {
+  inline def derived[T](using m: Mirror.Of[T]): Repr[T] = ???
+}
+```
 
+Let's make it usable by adding a basic implementation and the extension method for the case:
+
+```scala
+test("Repr for Foo()") {
+  import Repr.*
+  Foo().repr shouldBe "Foo()"
+}
+```
+I wanted to write `foo.repr`, not `summon[Repr[Foo]].repr(foo)`, so I added the extension method.
+
+```scala
+import scala.compiletime.constValue
+
+trait Repr[T] {
+  def repr(t: T): String
+}
+
+object Repr {
+  extension [T](t: T)
+    def repr(using r: Repr[T]): String = r.repr(t)
+
+  inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
+    val typeLabel = constValue[m.MirroredLabel]
+    new Repr[T] {
+      override def repr(t: T): String = s"$typeLabel()"
+    }
+}
+```
+I used `constValue` to get type label in compile time insted of hardocing it. This was the smallest implementation that made the first behavior test pass.
+Here is the first meta-related feature used!
+
+**Case 2: The simplest sum type `Option` (sums).**
+
+Sum types are a bit more interesting. They have several cases, and we want to be able to represent all of them together with their basic product type:
+
+```scala
+  test("Repr for Sum type") {
+    given R: Repr[Option[Boolean]] = Repr.derived
+    R.label shouldBe "Option"
+
+    val a: Option[Boolean] = Some(true)
+    val b: Option[Boolean] = None
+  
+    a.repr shouldBe "Some(value: Boolean = true)"
+    b.repr shouldBe "None()"
+  }
+```
+
+To do this, we need the output to be explicit about which case was active. The first version that made these `Option` expectations pass was also deliberately concrete:
+
+
+```scala
 trait Repr[T] {
   def repr(t: T): String
   def label: String
 }
 
-object Repr {
-  inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
-    new Repr[T] {
-      override def repr(t: T): String = t.toString
-      override def label: String = m.MirroredLabel.toString
-    }
-}
+...
+
+private def sumRepr[T](typeLabel: String): Repr[T] =
+  new Repr[T] {
+    override def repr(t: T): String = t match
+      case Some(v) => s"Some(value: Boolean = $v)"
+      case None    => "None()"
+    override def label: String = s"$typeLabel"
+  }
 ```
 
-This minimal `derived` method:
-- Accepts a `Mirror.Of[T]` (provided by the compiler for case classes)
-- Returns a `Repr[T]` instance
-- Uses `toString` for output (no formatting)
-- Extracts the type label from the mirror's metadata
+This implementation corresponds exactly to the `Option[Boolean]` assertions above. I matched directly on `Some` and `None` because that was the smallest way to make the first sum test pass. I also hardcoded `Boolean` in the output because the test only asked for `Option[Boolean]` at that point.
 
-This was enough. `case class Foo() derives Repr` now compiled. But `foo.repr` was not callable without a `repr` method on `T`. The next step added an extension method so that `foo.repr` worked:
+The important change from Case 1 was in `derived[T]`. Before `Option`, `derived[T]` just wrapped a trivial case. To support sums, I changed it so that it branches on the mirror shape and delegates to a separate sum implementation:
 
 ```scala
-extension [T](t: T) {
-  def repr(using r: Repr[T]): String = r.repr(t)
+inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
+  val label = constValue[m.MirroredLabel]
+  inline m match
+    case mp: Mirror.ProductOf[T] => productRepr[T](label)
+    case _: Mirror.Of[T]         => sumRepr[T](label)
+```
+
+where
+```scala
+private def productRepr[T](typeLabel: String): Repr[T] = new Repr[T] {
+  override def repr(t: T): String = new Repr[T] {
+    override def repr(t: T): String = s"$typeLabel()"
+  }
+  override def label: String = typeLabel
 }
 ```
 
-Now the experiment was complete: the type class could be derived, and values could call `.repr` to see their representation. The test could run.
+At that stage both branches were still hardcoded. The product branch returned the old `"Foo()"` behavior, while the sum branch returned the new `Option`-specific string. The key step was not generality yet — it was teaching `derived[T]` to distinguish products from sums.
+
+Once that behavior was confirmed, I replaced the special-case implementation with generic sum dispatch:
+
+```scala
+private def sumRepr[T](
+    typeLabel: String,
+    s: Mirror.SumOf[T],
+    reprs: => List[Repr[?]]
+  ): Repr[T] = new Repr[T] {
+  override def repr(t: T): String =
+    reprs(s.ordinal(t)).asInstanceOf[Repr[Any]].repr(t)
+  override def label: String = typeLabel
+}
+```
+
+At that point the implementation no longer knew anything specific about `Option`: it worked by selecting the active subtype representation through the sum ordinal.
+
+**Case 3: `Bar` (products).**
+```scala
+case class Bar(n: Int, m: Int) derives Repr
+Bar(1, 2).repr shouldBe "Bar(n: Int = 1, m: Int = 2)"
+```
+
+After sums, I came back to products and wanted labeled product output instead of plain `toString`. The first version that made this kind of test pass was deliberately hardcoded:
+
+```scala
+private def productRepr[T](typeLabel: String): Repr[T] = new Repr[T] {
+  override def repr(t: T): String =
+    val argValues = t.asInstanceOf[Product].productIterator.toList
+    s"$typeLabel(n: Int = ${argValues(0)}, m: Int = ${argValues(1)})"
+  override def label: String = typeLabel
+}
+```
+
+This implementation corresponds to the `Bar` expectation above. I hardcoded the field names (`n`, `m`) and field type (`Int`) because that was the smallest change that turned the test green. It was not meant to be final — it was just the fastest way to confirm the output shape I wanted.
+
+The important change from Case 2 was another change in `derived[T]`. It already knew how to distinguish products from sums. For `Bar`, I changed the product path so it started gathering product metadata and passing it into `productRepr`:
+
+```scala
+inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
+  val label     = constValue[m.MirroredLabel]
+  val argNames  = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
+  val agrLabels = argNames.map(_ => "Int")
+  inline m match
+    case _: Mirror.ProductOf[T] => productRepr[T](label, argNames, agrLabels)
+    case _: Mirror.Of[T]        => sumRepr[T](label)
+```
+
+There was one failed attempt before this green version. I first tried to get the argument type labels from `MirroredElemTypes`:
+
+```scala
+val agrLabels = constValueTuple[m.MirroredElemTypes].toList.map(_.toString)
+```
+
+That did not compile for `Bar(n: Int)`: `Int` is not a constant type, so it cannot be extracted with `constValueTuple` that way. To keep moving, I replaced it with the smallest working approximation: treat every field label as `"Int"`. That was enough for the current test and made the first product step green.
+
+Once that worked, I made it generic by removing the hardcoded field names and types:
+
+```scala
+private def productRepr[T](
+    typeLabel: String,
+    argNames: List[String],
+    reprs: => List[Repr[?]]
+  ): Repr[T] = new Repr[T] {
+  override def repr(t: T): String =
+    val argValues = t.asInstanceOf[Product].productIterator.toList
+    val args = argNames.lazyZip(reprs).lazyZip(argValues)
+      .map { (name, repr, value) =>
+        s"$name: ${repr.label} = ${repr.asInstanceOf[Repr[Any]].repr(value)}"
+      }
+    s"$typeLabel(${args.mkString(", ")})"
+  override def label: String = typeLabel
+}
+```
+
+Later, I updated the product branch of `derived[T]` again so that it could pass both field names and recursively derived field representations into the generalized `productRepr`:
+
+```scala
+inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
+  val label = constValue[m.MirroredLabel]
+  lazy val reprs = summonReprs[m.MirroredElemTypes]
+  inline m match
+    case _: Mirror.ProductOf[T] =>
+      val argNames = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
+      productRepr[T](label, argNames, reprs)
+```
+
+This is the point where generic product derivation becomes real: `derived[T]` stops building product output from hardcoded `"Int"` labels and starts building a product-specific representation from compile-time field metadata plus recursively derived field type classes.
+
+At that point `Bar` was no longer special: any product type with supported field representations could be derived the same way.
+
+Finally, when I introduced recursive types (`Lst`, then `List`), derivation started to recurse too early and produced recursion-related failures/warnings. I fixed that by deferring recursive evidence at the right place: `lazy val reprs` in `derived`.
+
+### Development process at a glance (after the bootstrap step)
+
+1. **Sums: concrete first, generic next**
+
+```scala
+// concrete green
+case Some(v) => s"Some(value: Boolean = $v)"
+case None    => "None()"
+
+// generic sum dispatch
+reprs(s.ordinal(t)).asInstanceOf[Repr[Any]].repr(t)
+```
+
+2. **Products: first make it pass, then make it generic**
+
+```scala
+// hardcoded green for Bar
+s"$typeLabel(n: Int = ${argValues(0)}, m: Int = ${argValues(1)})"
+
+// refactored generic product formatting
+val args = argNames.lazyZip(reprs).lazyZip(argValues).map { (name, repr, value) =>
+  s"$name: ${repr.label} = ${repr.asInstanceOf[Repr[Any]].repr(value)}"
+}
+```
+
+3. **Recursion: defer evaluation at the right boundary**
+
+```scala
+// fix recursion/evaluation-order problems
+lazy val reprs = summonReprs[m.MirroredElemTypes]
+```
+
 
 ## Product Derivation
 
@@ -388,7 +587,8 @@ The `Repr` TDD story is a progression from a tiny derivation experiment to a rec
 
 | Stage | Challenge | Solution |
 |---|---|---|
-| Bootstrap | Old sum type attempt reverted; clean restart needed | Rename to `ReprOld`, derive from scratch |
+| Bootstrap | `Foo derives Repr` must compile, then `Foo().repr` must be callable in a test | Add a minimal `derived` hook first, then a trivial implementation plus the `repr` extension |
+| Sums — first pass | `Option[Boolean]` needs explicit `Some(...)` / `None()` output | Split `derived` into product/sum branches and use a concrete `sumRepr` first |
 | Products | `[E182]` compiler error when `Bar derives Repr` | Hardcode first, then generalize with `MirroredElemLabels` and primitive instances |
 | Sums — step 1 | Hardcoded `sumRepr` only worked for `Option[Boolean]` | Move to ordinal dispatch with precomputed subtype reprs |
 | Sums — step 2 | `No given instance of type Repr[Some[Boolean]] was found` | Add `Mirror`-based fallback in `summonFrom` |
