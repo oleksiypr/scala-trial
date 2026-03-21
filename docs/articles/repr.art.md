@@ -401,12 +401,6 @@ This closed the missing-instance gap (`Some[Boolean]` / `None.type` can now be d
 
 The method recursively resolves a `Repr` instance for every element type in the mirror's element tuple. For a product like `Bar`, those are the field types (`Int`, `Int`). For a sum like `Option[Boolean]`, those are the subtype cases (`Some[Boolean]`, `None.type`). The result is a `List[Repr[?]]` indexed by position — exactly what `s.ordinal(t)` indexes into at runtime.
 
-4. **Recursion: defer evaluation at the right boundary**
-
-```scala
-// fix recursion/evaluation-order problems
-lazy val reprs = summonReprs[m.MirroredElemTypes]
-```
 
 
 ## Recursion and Refactoring
@@ -419,9 +413,37 @@ The most revealing step was adding a recursive enum:
 enum Lst[+T] derives Repr:
   case Cns(t: T, ts: Lst[T])
   case Nl
+
+test("Repr for recursive type") {
+  val empty: Lst[Int] = Lst.Nl
+  val unit : Lst[Int] = Lst.Cns(1, Lst.Nl)
+  val list : Lst[Int] = Lst.Cns(1, Lst.Cns(2, Lst.Nl))
+
+  empty.repr shouldBe "Nl()"
+  unit.repr shouldBe "Cns(t: Int = 1, ts: Lst = Nl())"
+  list.repr shouldBe "Cns(t: Int = 1, ts: Lst = Cns(t: Int = 2, ts: Lst = Nl()))"
+}
 ```
 
-The test failed — not with a wrong assertion, but with what appeared to be infinite recursion during derivation. The commit message was explicit: "Test fails. This looks like infinite recursion (how to terminate recursion?)".
+Compiler produces a warning:
+
+```bash
+[warn] -- Warning: ... ReprSpec.scala: ...
+[warn] 13 |  enum Lst[+T] derives Repr:
+[warn]    |                       ^
+[warn]    |Infinite loop in function body
+[warn]    |{
+```
+
+The test, however, fails with stack overflow due to infinite recursion in the derivation process:
+
+```bash
+An exception or error caused a run to abort. 
+java.lang.StackOverflowError
+	at progmeta.ReprSpec$Lst$.derived$Repr(ReprSpec.scala:13)
+	at progmeta.ReprSpec$Lst$.derived$Repr(ReprSpec.scala:13)
+	...
+```
 
 The root cause was that `summonReprs` resolved all element `Repr` instances eagerly at derivation time. For `Cns[T]`, one of the elements is `Lst[T]` — the same type being derived. Resolving `Repr[Lst[T]]` triggered `Repr.derived[Lst[T]]` again before the first derivation had finished, looping indefinitely.
 
@@ -430,34 +452,35 @@ The root cause was that `summonReprs` resolved all element `Repr` instances eage
 The fix was a single keyword change:
 
 ```scala
-// before: eager — triggers infinite recursion for recursive types
-val reprs = summonReprs[m.MirroredElemTypes]
-
-// after: deferred until repr() is actually called at runtime
-lazy val reprs = summonReprs[m.MirroredElemTypes]
+inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
+  ...
+  lazy val reprs = summonReprs[m.MirroredElemTypes]
+  ...
 ```
 
-Making `reprs` lazy broke the derivation-time recursion cycle. The `Lst` tests passed. The same approach immediately worked for `List`, which follows the same recursive sum-of-products structure.
+Making `reprs` lazy broke the derivation-time recursion cycle. The warning was resolved by finding the correct placement for the lazy evaluation — not at the call site where it was originally moved, but at the boundary where recursion was actually triggered. The final shape kept `lazy val reprs` in `derived`, which is the point closest to where cyclic resolution can occur.
+Unfortunately, the test still fails.
 
-### Challenge: removing lazy introduced a compiler warning
-
-After the recursion fix, a refactoring step tried to remove laziness from a different part of the evaluation chain. The commit message captured the problem as it happened: "Remove lazy evaluation for reprs in derived. This causes warning". The warning was a sign that the compiler could see unnecessary lazy wrapping that would never be evaluated in the same way as expected.
-
-### Solution: fix warning placement
-
-The warning was resolved by finding the correct placement for the lazy evaluation — not at the call site where it was originally moved, but at the boundary where recursion was actually triggered. The final shape kept `lazy val reprs` in `derived`, which is the point closest to where cyclic resolution can occur.
+The key point: `lazy val` + `=> T` (by-name) form a pair. `lazy val` defers construction, by-name defers consumption. Both are needed: if `reprs` is lazy but passed eagerly, the laziness is immediately collapsed at the call site. The cycle is only truly broken when both sides defer.
 
 ```scala
-// after: keep laziness at the derivation boundary where recursive graphs are built
-inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
-  val label = constValue[m.MirroredLabel]
-  lazy val reprs = summonReprs[m.MirroredElemTypes]
-  inline m match
-    case _: Mirror.ProductOf[T] =>
-      val argNames = constValueTuple[m.MirroredElemLabels].toList.map(_.toString)
-      productRepr[T](label, argNames, reprs)
-    case s: Mirror.SumOf[T] =>
-      sumRepr[T](label, s, reprs)
+private def productRepr[T]( ..., reprs: => List[Repr[?]]): Repr[T] = ...
+private def sumRepr[T]( ..., reprs: => List[Repr[?]]): Repr[T] = ...   
+```
+
+Now it passes!
+
+
+The same approach immediately workes for `List`, which follows the same recursive sum-of-products structure.
+
+```scala
+  test("Repr for List") {
+    given R: Repr[List[Int]] = Repr.derived
+    R.label shouldBe "List"
+    R.repr(Nil) shouldBe "Nil()"
+    R.repr(List(1)) shouldBe "::(head: Int = 1, next: List = Nil())"
+    R.repr(List(1, 2)) shouldBe "::(head: Int = 1, next: List = ::(head: Int = 2, next: List = Nil()))"
+  }
 ```
 
 This back-and-forth is typical of metaprogramming work: evaluation order matters in ways that are not immediately visible from the types alone. Compiler feedback — warnings included — was part of finding the right answer.

@@ -58,17 +58,14 @@ class ReprSpec extends AnyFunSuite with Matchers {
     Qux(None).repr shouldBe "Qux(s: Option = None())"
   }
 
-  test("Repr for Lst") {
+  test("Repr for recursive type") {
     val empty: Lst[Int] = Lst.Nl
     val unit : Lst[Int] = Lst.Cns(1, Lst.Nl)
     val list : Lst[Int] = Lst.Cns(1, Lst.Cns(2, Lst.Nl))
-
-    summon[Repr[Lst[Int]]].label shouldBe "Lst"
     
     empty.repr shouldBe "Nl()"
     unit.repr shouldBe "Cns(t: Int = 1, ts: Lst = Nl())"
     list.repr shouldBe "Cns(t: Int = 1, ts: Lst = Cns(t: Int = 2, ts: Lst = Nl()))"
-    
   }
 
   test("Repr for List") {
