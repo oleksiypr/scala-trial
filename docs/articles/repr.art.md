@@ -1,11 +1,23 @@
 # Repr Derivation (Products + Sums): TDD Process Description
 
-This article documents the iterative, test-driven development (TDD) process for building `Repr` derivation for product and sum types.
+Debugging often requires more than just values in logs; it also needs metadata such as field names and types.
+For example: 
+
+```scala
+Item(id: Long = 100500, content: Package = Box(count: Short = 256, massKg: Float = 9.81))
+```
+
+gives way more context than just `Item(100500, Box(256, 9.81))`.
+
+A manual `toString` override can provide that context, but it usually adds repetitive boilerplate and is hard to keep consistent across many data types. This is where derivation helps: using metaprogramming, we can generate rich representations for product and sum types automatically.
+
+
 
 ## Table of Contents
 - [The Solution](#the-solution)
   - [ReprSpec (compact intent)](#reprspec-compact-intent)
   - [Repr (compact intent)](#repr-compact-intent)
+- [Warming up: `inline`-s](#warming-up-inline-s)
 - [Background](#background)
   - [Case 1: simplest product — `Foo()` bootstrap](#case-1-the-simplest-product-type-foo-bootstrap)
   - [Case 2: simplest sum — `Option`](#case-2-the-simplest-sum-type-option-sums)
@@ -66,6 +78,79 @@ The key elements:
 - The inline match dispatches to either product or sum logic
 
 Everything else in the TDD story is about making these two branches correct, recursive, and testable.
+
+## Warming up: `inline`-s
+
+The derivation machinery leans on a handful of compile-time primitives. Here is a quick reference before tracing the TDD story:
+
+| Primitive | What it does |
+|---|---|
+| `inline def` | Forces the compiler to expand the body at every call site |
+| `constValue[T]` | Extracts a compile-time constant from a singleton type (e.g. `"Bar"` from `m.MirroredLabel`) |
+| `constValueTuple[T]` | Like `constValue`, but for a tuple of singleton types (e.g. field name labels) |
+| `erasedValue[T]` | Returns a phantom value of type `T`; only used inside `inline match` for type-level dispatch, never at runtime |
+| `summonInline[T]` | Resolves an implicit of type `T` at compile time; fails with a compile error if none is found |
+| `summonFrom { ... }` | Tries several implicit resolution strategies in order; the first branch that succeeds wins |
+| `inline match` | A match expression resolved entirely at compile time; each branch is specialised for the matched type shape |
+
+These building blocks appear throughout the article. Understanding each one makes it easier to follow the step-by-step derivation story in [Background](#background).
+
+What is the `inline def` for? It is a way to force the compiler to expand the body of a function at every call site. This is crucial for our `derived` method because it allows us to perform compile-time computations and generate code based on the structure of the type `T`. When we call `Repr.derived[Bar]`, the compiler will inline the body of `derived` and evaluate it with the specific type information for `Bar`. This is what enables us to extract labels, field names, and other metadata at compile time, which is essential for generating the correct string representation.
+
+```scala
+object Debug {
+
+  inline def included(enabled: Boolean)(inline code: => Unit): Unit =
+    if enabled then { code; () } else ()
+}
+```
+
+```scala
+Debug.included(false) {
+  println("Nothing to be compiled. No output.")
+}
+
+Debug.included(true) {
+  val x = 10
+  val y = 5
+  val z = x + y
+  println("This code compiles and outputs: " + z)
+}
+```
+
+If we add to `build.sbt` the following: 
+
+```scala
+scalacOptions ++= Seq(
+  "-Vprint:postInlining",
+  "-Xmax-inlines:100000",
+  "-Xcheck-macros",
+)
+```
+
+Then, the `~console` command in sbt interactive mode prints the inlined code on the fly:
+
+```bash
+[info]   @SourceFile("src/main/scala/progmeta/Main.scala") final module class Main()
+[info]      extends Object() { this: progmeta.Main.type =>
+...
+[info]     @main def run(): Unit =
+[info]       {
+[info]         ():Unit
+[info]         {
+[info]           {
+[info]             val x: Int = 10
+[info]             val y: Int = 5
+[info]             val z: Int = (x + y)
+[info]             println("This code compiles and outputs: " + z)
+[info]           }
+[info]           ()
+[info]         }:Unit
+[info]       }
+[info]   }
+```
+
+In plain terms, `Debug.included` acts like a compile-time switch. With `Debug.included(true)`, the block is kept, so you can see `x`, `y`, `z`, and `println` in the post-inlining output. With `Debug.included(false)`, that block is inlined away : `():Unit`, so the generated code has nothing to execute there and no runtime `if` check.
 
 ## Background
 
