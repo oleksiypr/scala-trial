@@ -4,10 +4,18 @@ This article documents the iterative, test-driven development (TDD) process for 
 
 ## Table of Contents
 - [The Solution](#the-solution)
+  - [ReprSpec (compact intent)](#reprspec-compact-intent)
+  - [Repr (compact intent)](#repr-compact-intent)
 - [Background](#background)
-- [Product Derivation](#product-derivation)
-- [Sum Derivation](#sum-derivation)
+  - [Case 1: simplest product — `Foo()` bootstrap](#case-1-the-simplest-product-type-foo-bootstrap)
+  - [Case 2: simplest sum — `Option`](#case-2-the-simplest-sum-type-option-sums)
+  - [Development process at a glance](#development-process-at-a-glance-after-the-bootstrap-step)
+    - [Step 1: concrete first, generic next](#step-1-concrete-first-generic-next)
+    - [Step 2 — Mirror fallback; ambiguous given instances](#step-2--add-mirror-fallback-challenge-ambiguous-given-instances)
+    - [Step 3 — final solution: resolve each element with a concrete type](#step-3--final-solution-resolve-each-element-with-a-concrete-type)
 - [Recursion and Refactoring](#recursion-and-refactoring)
+  - [Challenge: infinite recursion with Lst](#challenge-infinite-recursion-with-lst)
+  - [Solution: make reprs lazy](#solution-make-reprs-lazy)
 - [Summary](#summary)
 
 ## The Solution
@@ -63,7 +71,7 @@ Everything else in the TDD story is about making these two branches correct, rec
 
 I built this feature in small, practical steps.
 
-**Case 1: The simplest product type: `Foo()` (bootstrap).**
+### Case 1: The simplest product type: `Foo()` (bootstrap)
 
 At first, we want one simple thing: 
 
@@ -115,7 +123,7 @@ object Repr {
 I used `constValue` to get type label in compile time insted of hardocing it. This was the smallest implementation that made the first behavior test pass.
 Here is the first meta-related feature used!
 
-**Case 2: The simplest sum type `Option` (sums).**
+### Case 2: The simplest sum type `Option` (sums)
 
 Sum types are a bit more interesting. They have several cases, and we want to be able to represent all of them together with their basic product type:
 
@@ -492,14 +500,13 @@ The `Repr` TDD story is a progression from a tiny derivation experiment to a rec
 | Stage | Challenge | Solution |
 |---|---|---|
 | Bootstrap | `Foo derives Repr` must compile, then `Foo().repr` must be callable in a test | Add a minimal `derived` hook first, then a trivial implementation plus the `repr` extension |
-| Sums — first pass | `Option[Boolean]` needs explicit `Some(...)` / `None()` output | Split `derived` into product/sum branches and use a concrete `sumRepr` first |
-| Products | `[E182]` compiler error when `Bar derives Repr` | Hardcode first, then generalize with `MirroredElemLabels` and primitive instances |
-| Sums — step 1 | Hardcoded `sumRepr` only worked for `Option[Boolean]` | Move to ordinal dispatch with precomputed subtype reprs |
+| Sums — first pass | `Option[Boolean]` needs explicit `Some(...)` / `None()` output | Split `derived` into product/sum branches; use a concrete hardcoded `sumRepr` first |
+| Products — `Bar` | Fields need names and type labels in the output | Hardcode field names and `"Int"` first, then generalize with `MirroredElemLabels` and `constValueTuple` |
+| Nested products — `Baz` | `bar: Bar` field has a non-primitive type; hardcoded `"Int"` label is wrong | Replace hardcoded type labels with `summonReprs[m.MirroredElemTypes]`; add primitive `Repr` givens |
+| Sums — step 1 | Hardcoded `sumRepr` only worked for `Option[Boolean]` | Move to ordinal dispatch with precomputed subtype reprs via `s.ordinal(t)` |
 | Sums — step 2 | `No given instance of type Repr[Some[Boolean]] was found` | Add `Mirror`-based fallback in `summonFrom` |
 | Sums — step 3 | `[E172] Ambiguous given instances` — abstract `elem` matched too broadly | Extract `private inline def sumRepr[Elem]` so implicit search sees a concrete type |
-| Labels | `label` removed as unused, tests later proved it required | Re-add only when a test makes the requirement explicit |
-| Recursion | Infinite recursion when deriving `Lst` | Make `reprs` lazy to defer resolution until runtime |
-| Warnings | Moving laziness caused a compiler warning | Keep `lazy val reprs` at the correct boundary in `derived` |
+| Recursion | Infinite recursion and compiler warning when deriving `Lst` | Make `reprs` a `lazy val` in `derived`; pass it by-name (`=> List[Repr[?]]`) to `productRepr` and `sumRepr` |
 
 The most important lesson is that each challenge surfaced only when a test tried to express new behavior. The design was never ahead of the tests — it was always catching up to them.
 
