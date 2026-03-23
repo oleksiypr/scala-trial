@@ -16,14 +16,17 @@ And the boilerplate usually drifts out of sync.
 So the idea of this article is simple: let metaprogramming do the repetitive work.
 We derive `Repr` automatically for product and sum types and keep the output rich enough for real debugging.
 
-Let's get started with an example of **derivation data structures (Products types and Sums types) representation in Scala 3**:
+Let’s start with a Scala 3 example of **derived representations for product and sum types**:
 
 - The Solution (direct to the point if you already know the answer)
 - Warming up: `inline`-s
 - Background (bootstrap)
 - Recursive data types (infinite recursion)
 
-## The Solution (if you already know the answer, otherwise skip to the Warming Up section)
+## The Solution
+
+If you already want to see the final code/answer, read this section now.
+If you prefer the full step-by-step explanation, you can come back to it later.
 
 At a high level, the final result does two jobs:
 
@@ -579,10 +582,8 @@ private def productRepr[T]( ..., reprs: => List[Repr[?]]): Repr[T] = ...
 private def sumRepr[T]( ..., reprs: => List[Repr[?]]): Repr[T] = ...   
 ```
 
-Now the recursion case passes.
 
-
-The same trick also works for `List`, which has the same recursive sum-of-products shape.
+The same trick also works for standard Scala `List`, which has the same recursive sum-of-products shape.
 
 ```scala
   test("Repr for List") {
@@ -597,4 +598,4 @@ The same trick also works for `List`, which has the same recursive sum-of-produc
 This is a very common metaprogramming pattern: types can look correct while evaluation order is still wrong.
 Compiler warnings were not noise here; they were signals pointing to the real issue.
 
-## Summary
+
