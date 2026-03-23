@@ -10,7 +10,7 @@ Item(id: Long = 100500, content: Package = Box(count: Short = 256, massKg: Float
 
 This tells a much clearer story than `Item(100500, Box(256, 9.81))`.
 
-Sure, you could override toString. But that means one method per class, touched again every time the shape of that class changes.
+Sure, you could override `.toString`. But that means one method per class, touched again every time the shape of that class changes.
 
 So the idea of this article is simple: let metaprogramming do the repetitive work.
 We derive `Repr` automatically for product and sum types and keep the output rich enough for real debugging.
@@ -610,5 +610,5 @@ The key techniques include:
 - `inline` and `lazy val` to control evaluation order and avoid infinite recursion
 - `erasedValue` to create compile-time placeholders for type-level computations
 
-With these tools, we can derive any typeclass for complex product and sum types, eliminating boilerplate and keeping debug output consistent across your codebase.
+With these tools, we can derive `Repr` for complex product and sum types — and the same pattern can be extended to other typeclasses.
 That is the real payoff: less boilerplate, richer debug output, and one derivation pipeline that keeps working from tiny case classes all the way to recursive data types.
