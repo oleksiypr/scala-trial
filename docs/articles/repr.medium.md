@@ -124,9 +124,9 @@ So there is no runtime branch cost to pay later.
 
 ## Background
 
-Before we list the tools, one key idea first: `Mirror` is the compiler's structural view of a type.
+One key idea before we dive in: `Mirror` is the compiler's structural view of a type.
 It tells us the type shape: product (fields, like a case class) or sum (alternatives, like an enum/sealed hierarchy).
-That shape is exactly what lets derivation choose the right strategy; namely derivation relies on `Mirror.Of[T]` which is a supertype of two types (for products and sums):
+That shape is exactly what lets derivation choose the right strategy. In practice, `Mirror.Of[T]` comes in two forms:
 
 ```scala
 Mirror.ProductOf[T]
@@ -182,7 +182,7 @@ object Repr {
     }
 }
 ```
-I used `constValue` to read the type label at compile time instead of hardcoding it. It extracts a compile-time constant from a singleton type (e.g. `"Bar"` from `m.MirroredLabel`)
+I used `constValue` to read the type label at compile time instead of hardcoding it. It extracts a compile-time constant from a singleton type (e.g. `"Bar"` from `m.MirroredLabel`).
 That was the smallest implementation that made the first test pass, and the first real metaprogramming moment in the article.
 
 ### Case 2: The simplest sum type `Option` (sums)
@@ -241,6 +241,7 @@ inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
 ```
 
 where
+
 ```scala
 private def productRepr[T](typeLabel: String): Repr[T] = new Repr[T] {
   override def repr(t: T): String = new Repr[T] {
@@ -290,9 +291,7 @@ Not as the final design, but as the fastest way to validate the output format.
 Then `derived[T]` evolves again.
 It already distinguishes products from sums; now it must also gather product metadata and pass it to `productRepr` instead of relying on hardcoded names.
 
-For that we use two compile-time tools: `m.MirroredElemLabels` and `constValueTuple`.
-`constValue` gives one singleton constant.
-`constValueTuple` gives a whole tuple of constants, which is exactly what we need for field names.
+For that we use constValueTuple. The compiler already knows the field names in m.MirroredElemLabels; constValueTuple turns them into usable strings. The same idea applies to m.MirroredLabel, which gives us the type name.
 
 ```scala
 inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
@@ -612,5 +611,5 @@ The key techniques include:
 - `erasedValue` to create compile-time placeholders for type-level computations
 
 With these tools, we can derive any typeclass for complex product and sum types, eliminating boilerplate and keeping debug output consistent across your codebase.
-
+That is the real payoff: less boilerplate, richer debug output, and one derivation pipeline that scales from tiny case classes to recursive data types.
 
