@@ -10,23 +10,16 @@ Item(id: Long = 100500, content: Package = Box(count: Short = 256, massKg: Float
 
 This tells a much clearer story than `Item(100500, Box(256, 9.81))`.
 
-A manual `toString` can provide this, but writing and maintaining that by hand quickly turns into boilerplate.
-And the boilerplate usually drifts out of sync.
+Sure, you could override `toString`. But think about what that means: one method per class, updated every time a field changes.
 
 So the idea of this article is simple: let metaprogramming do the repetitive work.
 We derive `Repr` automatically for product and sum types and keep the output rich enough for real debugging.
 
-Let’s start with a Scala 3 example of **derived representations for product and sum types**:
-
-- The Solution (direct to the point if you already know the answer)
-- Warming up: `inline`-s
-- Background (bootstrap)
-- Recursive data types (infinite recursion)
+Let’s start with a Scala 3 example of **derived representations for product and sum types**.
 
 ## The Solution
 
-If you already want to see the final code/answer, read this section now.
-If you prefer the full step-by-step explanation, you can come back to it later.
+Want the final version? Read this section. Otherwise, jump to [Background](#background).
 
 At a high level, the final result does two jobs:
 
@@ -133,7 +126,12 @@ So there is no runtime branch cost to pay later.
 
 Before we list the tools, one key idea first: `Mirror` is the compiler's structural view of a type.
 It tells us the type shape: product (fields, like a case class) or sum (alternatives, like an enum/sealed hierarchy).
-That shape is exactly what lets derivation choose the right strategy.
+That shape is exactly what lets derivation choose the right strategy; namely derivation relies on `Mirror.Of[T]` which is a supertype of two types (for products and sums):
+
+```scala
+Mirror.ProductOf[T]
+Mirror.SumOf[T] 
+```
 
 ### Case 1: The simplest product type: `Foo()` (bootstrap)
 
@@ -355,7 +353,12 @@ private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
     case _: EmptyTuple          => Nil
     case _: (elem *: elems)     => summonInline[Repr[elem]] :: summonReprs[elems]
 ```
-Here `summonInline[T]`  Resolves an implicit of type `T` at compile time; e.g. `summonInline[Repr[Int]]` succeeds if `given Repr[Int]` exists, while `summonInline[Repr[Foo]]` fails at compile time if no given can be found.
+
+Here's what's happening: `summonInline` simply asks the compiler: "Do you already have a `Repr[Int]` in scope?" If yes, use it. If no, compilation stops with an error. That's the whole idea — a direct request at compile time.
+
+Another tool we need is `erasedValue`. It sounds mysterious, but here's the plain idea: we need to tell the compiler "analyze this type shape" without creating a real value at runtime. So `inline erasedValue[(Int, String, Boolean)] match` is the compiler's way of saying: look at the structure of this tuple type, figure out the first element (`Int`) and what's left (`String, Boolean`), then dispatch to the right code path. No runtime tuple is ever made — it's purely for compile-time pattern-matching logic.
+
+
 
 This walks field types at compile time and summons `Repr` for each element.
 `Int` resolves from the primitive given.
@@ -443,7 +446,7 @@ That is exactly why the next step introduces `summonFrom` fallback.
 ### Step 2 — add Mirror fallback; challenge: ambiguous given instances
 
 The natural fix: if an explicit `Repr[elem]` is not found, fall back to mirror-based derivation.
-This can be achieved with one more compile-tim promitive `summonFrom`. It implicit strategies in order; e.g. `summonFrom { case r: Repr[Elem] => r; case m: Mirror.Of[Elem] => Repr.derived[Elem] }` uses an existing given `Repr[Elem]` if present, otherwise falls back to mirror-based derivation.
+This can be achieved with one more tool: `summonFrom`. It tries implicit strategies in order.
 
 In recursive form:
 
@@ -597,5 +600,17 @@ The same trick also works for standard Scala `List`, which has the same recursiv
 
 This is a very common metaprogramming pattern: types can look correct while evaluation order is still wrong.
 Compiler warnings were not noise here; they were signals pointing to the real issue.
+
+## Summary
+
+Compile-time reflection and metaprogramming are powerful tools for automating boilerplate and generating rich representations.
+The key techniques include:
+- `Mirror` to inspect type structure
+- `constValue` and `constValueTuple` to extract compile-time constants
+- `summonInline` and `summonFrom` for compile-time implicit resolution
+- `inline` and `lazy val` to control evaluation order and avoid infinite recursion
+- `erasedValue` to create compile-time placeholders for type-level computations
+
+With these tools, we can derive any typeclass for complex product and sum types, eliminating boilerplate and keeping debug output consistent across your codebase.
 
 
