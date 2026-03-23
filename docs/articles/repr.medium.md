@@ -1,4 +1,4 @@
-# Repr Derivation (Products + Sums): A Step-by-Step Build Story
+# Metaprogramming: Teaching the Compiler to Explain Your Data.
 
 When debugging gets serious, raw values are rarely enough.
 You also want context: field names, types, and nested structure.
@@ -11,29 +11,17 @@ Item(id: Long = 100500, content: Package = Box(count: Short = 256, massKg: Float
 This tells a much clearer story than `Item(100500, Box(256, 9.81))`.
 
 A manual `toString` can provide this, but writing and maintaining that by hand quickly turns into boilerplate.
-And boilerplate usually drifts out of sync.
+And the boilerplate usually drifts out of sync.
 
 So the idea of this article is simple: let metaprogramming do the repetitive work.
 We derive `Repr` automatically for product and sum types and keep the output rich enough for real debugging.
 
+Let's get started with an example of **derivation data structures (Products types and Sums types) representation in Scala 3**:
 
-
-## Table of Contents
-- [The Solution](#the-solution)
-  - [ReprSpec (compact intent)](#reprspec-compact-intent)
-  - [Repr (compact intent)](#repr-compact-intent)
-- [Warming up: `inline`-s](#warming-up-inline-s)
-- [Background](#background)
-  - [Case 1: simplest product — `Foo()` bootstrap](#case-1-the-simplest-product-type-foo-bootstrap)
-  - [Case 2: simplest sum — `Option`](#case-2-the-simplest-sum-type-option-sums)
-  - [Development process at a glance](#development-process-at-a-glance-after-the-bootstrap-step)
-    - [Step 1: concrete first, generic next](#step-1-concrete-first-generic-next)
-    - [Step 2 — Mirror fallback; ambiguous given instances](#step-2--add-mirror-fallback-challenge-ambiguous-given-instances)
-    - [Step 3 — final solution: resolve each element with a concrete type](#step-3--final-solution-resolve-each-element-with-a-concrete-type)
-- [Recursion and Refactoring](#recursion-and-refactoring)
-  - [Challenge: infinite recursion with Lst](#challenge-infinite-recursion-with-lst)
-  - [Solution: make reprs lazy](#solution-make-reprs-lazy)
-- [Summary](#summary)
+- The Solution (direct to the point if you already know the answer)
+- Warming up: `inline`-s
+- Background (bootstrap)
+- Recursive data types (infinite recursion)
 
 ## The Solution (if you already know the answer, otherwise skip to the Warming Up section)
 
@@ -80,7 +68,7 @@ Think of the core pieces like this:
 - `label`: the type name (e.g., `"Bar"`, `"Option"`)
 - `argNames`: field names known at compile time (e.g., `["n", "m"]`)
 - `reprs`: derived `Repr` instances for fields/subtypes, kept lazy to avoid recursive loops
-- `inline match`: routes to product logic or sum logic based on type shape
+- `inline match`: routes to product logic or sum logic based on type shape; a match expression resolved entirely at compile time
 
 Everything else in this step-by-step story is about making those two branches generic, recursive, and reliable.
 
@@ -105,10 +93,7 @@ Debug.included(false) {
 }
 
 Debug.included(true) {
-  val x = 10
-  val y = 5
-  val z = x + y
-  println("This code compiles and outputs: " + z)
+  println("This code compiles and outputs.")
 }
 ```
 
@@ -125,28 +110,20 @@ scalacOptions ++= Seq(
 Then in sbt interactive mode, `~console` keeps printing post-inlining output as sources change:
 
 ```bash
-[info]   @SourceFile("src/main/scala/progmeta/Main.scala") final module class Main()
-[info]      extends Object() { this: progmeta.Main.type =>
-...
-[info]     @main def run(): Unit =
-[info]       {
-[info]         ():Unit
-[info]         {
-[info]           {
-[info]             val x: Int = 10
-[info]             val y: Int = 5
-[info]             val z: Int = (x + y)
-[info]             println("This code compiles and outputs: " + z)
-[info]           }
-[info]           ()
-[info]         }:Unit
-[info]       }
-[info]   }
+
+[info]  ():Unit
+[info]  {
+[info]    {
+[info]      println("This code compiles and outputs.")
+[info]    }
+[info]    ()
+[info]  }:Unit
+
 ```
 
 In plain terms, `Debug.included` is a compile-time switch.
-Set it to `true`, and the block stays in the generated code (`x`, `y`, `z`, `println` are visible).
 Set it to `false`, and the compiler erases that block into `():Unit`.
+Set it to `true`, and the block stays in the generated code (`println(...)` is visible).
 So there is no runtime branch cost to pay later.
 
 ## Background
@@ -154,21 +131,6 @@ So there is no runtime branch cost to pay later.
 Before we list the tools, one key idea first: `Mirror` is the compiler's structural view of a type.
 It tells us the type shape: product (fields, like a case class) or sum (alternatives, like an enum/sealed hierarchy).
 That shape is exactly what lets derivation choose the right strategy.
-
-Here is a quick map of the compile-time tools we use.
-
-| Primitive | What it does                                                                                                                                                                                                                                         |
-|---|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `inline def` | Forces the compiler to expand the body at every call site                                                                                                                                                                                            |
-| `constValue[T]` | Extracts a compile-time constant from a singleton type (e.g. `"Bar"` from `m.MirroredLabel`)                                                                                                                                                         |
-| `constValueTuple[T]` | Like `constValue`, but for a tuple of singleton types (e.g. field name labels)                                                                                                                                                                       |
-| `erasedValue[T]` | Returns a compile-time placeholder of type `T`, a phantom value of the type; e.g. in `inline erasedValue[(Int *: String *: EmptyTuple)] match`, the compiler picks the `case _: (h *: t)` branch during inlining, and no value is created at runtime |
-| `summonInline[T]` | Resolves an implicit of type `T` at compile time; e.g. `summonInline[Repr[Int]]` succeeds if `given Repr[Int]` exists, while `summonInline[Repr[Foo]]` fails at compile time if no given can be found                                                |
-| `summonFrom { ... }` | Tries implicit strategies in order; e.g. `summonFrom { case r: Repr[Elem] => r; case m: Mirror.Of[Elem] => Repr.derived[Elem] }` uses an existing `given Repr[Elem]` if present, otherwise falls back to mirror-based derivation                     |
-| `inline match` | A match expression resolved entirely at compile time; each branch is specialised for the matched type shape                                                                                                                                          |
-
-These are the building blocks used throughout the article.
-If they feel abstract now, that is okay; each one becomes concrete in the steps from this section onward.
 
 ### Case 1: The simplest product type: `Foo()` (bootstrap)
 
@@ -219,7 +181,7 @@ object Repr {
     }
 }
 ```
-I used `constValue` to read the type label at compile time instead of hardcoding it.
+I used `constValue` to read the type label at compile time instead of hardcoding it. It extracts a compile-time constant from a singleton type (e.g. `"Bar"` from `m.MirroredLabel`)
 That was the smallest implementation that made the first test pass, and the first real metaprogramming moment in the article.
 
 ### Case 2: The simplest sum type `Option` (sums)
@@ -390,11 +352,14 @@ private inline def summonReprs[T <: Tuple]: List[Repr[?]] =
     case _: EmptyTuple          => Nil
     case _: (elem *: elems)     => summonInline[Repr[elem]] :: summonReprs[elems]
 ```
+Here `summonInline[T]`  Resolves an implicit of type `T` at compile time; e.g. `summonInline[Repr[Int]]` succeeds if `given Repr[Int]` exists, while `summonInline[Repr[Foo]]` fails at compile time if no given can be found.
+
 This walks field types at compile time and summons `Repr` for each element.
 `Int` resolves from the primitive given.
 `Bar` resolves from the synthesized given produced by `Bar derives Repr`.
 That is why `Baz` finally prints `bar: Bar = ...` instead of `bar: Int = ...`.
 
+Thus:
 
 ```scala
 inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
@@ -475,6 +440,8 @@ That is exactly why the next step introduces `summonFrom` fallback.
 ### Step 2 — add Mirror fallback; challenge: ambiguous given instances
 
 The natural fix: if an explicit `Repr[elem]` is not found, fall back to mirror-based derivation.
+This can be achieved with one more compile-tim promitive `summonFrom`. It implicit strategies in order; e.g. `summonFrom { case r: Repr[Elem] => r; case m: Mirror.Of[Elem] => Repr.derived[Elem] }` uses an existing given `Repr[Elem]` if present, otherwise falls back to mirror-based derivation.
+
 In recursive form:
 
 ```scala
@@ -542,9 +509,9 @@ And that list is exactly what `s.ordinal(t)` indexes at runtime.
 
 
 
-## Recursion and Refactoring
+## Recursive data types
 
-### Challenge: infinite recursion with Lst
+### Challenge: infinite recursion
 
 The most revealing step was adding a recursive enum:
 
@@ -571,7 +538,6 @@ The compiler warns us:
 [warn] 13 |  enum Lst[+T] derives Repr:
 [warn]    |                       ^
 [warn]    |Infinite loop in function body
-[warn]    |{
 ```
 
 And the test crashes with a stack overflow:
@@ -579,7 +545,6 @@ And the test crashes with a stack overflow:
 ```bash
 An exception or error caused a run to abort. 
 java.lang.StackOverflowError
-	at progmeta.ReprSpec$Lst$.derived$Repr(ReprSpec.scala:13)
 	at progmeta.ReprSpec$Lst$.derived$Repr(ReprSpec.scala:13)
 	...
 ```
@@ -633,24 +598,3 @@ This is a very common metaprogramming pattern: types can look correct while eval
 Compiler warnings were not noise here; they were signals pointing to the real issue.
 
 ## Summary
-
-The `Repr` journey starts as a tiny experiment and grows into a recursive representation utility.
-Every major move is triggered by a failing test or compiler feedback, not by heavy up-front design.
-
-| Stage | Challenge | Solution |
-|---|---|---|
-| Bootstrap | `Foo derives Repr` must compile, then `Foo().repr` must be callable in a test | Add a minimal `derived` hook first, then a trivial implementation plus the `repr` extension |
-| Sums — first pass | `Option[Boolean]` needs explicit `Some(...)` / `None()` output | Split `derived` into product/sum branches; use a concrete hardcoded `sumRepr` first |
-| Products — `Bar` | Fields need names and type labels in the output | Hardcode field names and `"Int"` first, then generalize with `MirroredElemLabels` and `constValueTuple` |
-| Nested products — `Baz` | `bar: Bar` field has a non-primitive type; hardcoded `"Int"` label is wrong | Replace hardcoded type labels with `summonReprs[m.MirroredElemTypes]`; add primitive `Repr` givens |
-| Sums — step 1 | Hardcoded `sumRepr` only worked for `Option[Boolean]` | Move to ordinal dispatch with precomputed subtype reprs via `s.ordinal(t)` |
-| Sums — step 2 | `No given instance of type Repr[Some[Boolean]] was found` | Add `Mirror`-based fallback in `summonFrom` |
-| Sums — step 3 | `[E172] Ambiguous given instances` — abstract `elem` matched too broadly | Extract `private inline def sumRepr[Elem]` so implicit search sees a concrete type |
-| Recursion | Infinite recursion and compiler warning when deriving `Lst` | Make `reprs` a `lazy val` in `derived`; pass it by-name (`=> List[Repr[?]]`) to `productRepr` and `sumRepr` |
-
-The main lesson is simple: each new test reveals the next design requirement.
-In this workflow, tests are not just checks at the end; they are the steering wheel.
-
----
-
-Note: this article is maintained as a dedicated topic file under `docs/articles/` and follows the plan in `docs/plans/repr.plan.md`.
