@@ -35,8 +35,8 @@ Define and implement the API-layer contract for `CancellableJobApi` (routes, HTT
   - `202 Accepted`
   - Headers: `Location`, `X-Job-Id`, `X-Total-Count`
 - `DELETE /jobs/{jobId}`
-  - `204 No Content` when cancellation succeed or the job is already terminal (`cancelled`, `failed`, `completed`), idempotent behavior:
-    - Headers: `X-Job-Id`, `X-Done-Count`
+  - `204 No Content` when cancellation succeeds or the job is already terminal (`cancelled`, `failed`, `completed`), idempotent behavior:
+    - Headers: `X-Job-Id`, `X-Done-Count`, `X-Job-Status` (reflecting current state, even if already terminal)
   - `404 Not Found` if job does not exist
 - `HEAD /jobs/{jobId}`
   - `404 Not Found` if missing
@@ -66,7 +66,7 @@ Create `src/test/scala/async/rest/CancellableJobApiSpec.scala` and cover:
 5. Implement iteratively: `src/main/scala/async/rest/CancellableJobApi.scala` with http4s routes for `POST`, `DELETE`, `HEAD`.
 6. Proceed step by step, ensuring each test passes before moving to the next, and refactor as needed while keeping tests green.
 7. Every scenario starts with a failing test (red), followed by minimal implementation to pass it (green), then refactor.
-8. Run tests every time an implementation added or changed to ensure all scenarios are covered and passing.
+8. Run tests every time an implementation is added or changed to ensure all scenarios are covered and passing.
 9. Map service outcomes to HTTP responses exactly as documented above.
 10. Add/extend custom headers in `src/main/scala/async/rest/http.scala`:
     - `X-Job-Id`
