@@ -35,9 +35,9 @@ Define and implement the API-layer contract for `CancellableJobApi` (routes, HTT
   - `202 Accepted`
   - Headers: `Location`, `X-Job-Id`, `X-Total-Count`
 - `DELETE /jobs/{jobId}`
-  - `204 No Content` when cancellation accepted or the job is already terminal (`cancelled`, `failed`, `completed`), idempotent behavior.
+  - `204 No Content` when cancellation succeed or the job is already terminal (`cancelled`, `failed`, `completed`), idempotent behavior:
+    - Headers: `X-Job-Id`, `X-Done-Count`
   - `404 Not Found` if job does not exist
-  - Success headers: `X-Job-Id`, `X-Done-Count`, `X-Job-Status=cancelled`
 - `HEAD /jobs/{jobId}`
   - `404 Not Found` if missing
   - `200 OK` for known states (`running`, `cancelled`, `failed`, `completed`)
@@ -52,7 +52,7 @@ Define and implement the API-layer contract for `CancellableJobApi` (routes, HTT
 Create `src/test/scala/async/rest/CancellableJobApiSpec.scala` and cover:
 - `POST /jobs` -> `202` + `Location`, `X-Job-Id`, `X-Total-Count`
 - `DELETE /jobs/{jobId}` success -> `204` + cancellation headers
-- `DELETE /jobs/{jobId}` terminal states (`cancelled`, `failed`, `completed`) -> still `204` (idempotent behavior)
+- `DELETE /jobs/{jobId}` terminal states (`cancelled`, `failed`, `completed`) -> still `204` (idempotent behavior), `X-Job-Status` reflects terminal state
 - `DELETE /jobs/{jobId}` missing -> `404`
 - `HEAD /jobs/{jobId}` each state -> `200` + expected headers
 - `HEAD /jobs/{jobId}` missing -> `404`
@@ -62,18 +62,19 @@ Create `src/test/scala/async/rest/CancellableJobApiSpec.scala` and cover:
 1. Use TDD to drive API design and implementation, starting with tests that define expected status codes and headers for each route and job state.
 2. Implementation circle should be: red (write failing test), green (implement just enough to pass), refactor (clean up code while keeping tests green).
 3. Freeze API boundaries and status/header contract in this plan.
-4. Tests first: `src/test/scala/async/rest/CancellableJobApiSpec.scala` with http4s routes for `POST`, `DELETE`, `HEAD`.
+4. Tests first: `src/test/scala/async/rest/CancellableJobApiSpec.scala` covering route behavior for `POST`, `DELETE`, `HEAD`.
 5. Implement iteratively: `src/main/scala/async/rest/CancellableJobApi.scala` with http4s routes for `POST`, `DELETE`, `HEAD`.
 6. Proceed step by step, ensuring each test passes before moving to the next, and refactor as needed while keeping tests green.
-7. No new code without a failing test first, and no test without implementation to pass it.
-8. Map service outcomes to HTTP responses exactly as documented above.
-9. Add/extend custom headers in `src/main/scala/async/rest/http.scala`:
+7. Every scenario starts with a failing test (red), followed by minimal implementation to pass it (green), then refactor.
+8. Run tests every time an implementation added or changed to ensure all scenarios are covered and passing.
+9. Map service outcomes to HTTP responses exactly as documented above.
+10. Add/extend custom headers in `src/main/scala/async/rest/http.scala`:
     - `X-Job-Id`
     - `X-Done-Count`
     - `X-Job-Status`
     - `X-Failure-Reason`
-10. Keep API layer orchestration-only; avoid embedding business logic.
-11. `CancellableService` contains dummy implementation for API development/testing, but is not the focus of this plan.
+11. Keep API layer orchestration-only; avoid embedding business logic.
+12. `CancellableService` contains dummy implementation for API development/testing, but is not the focus of this plan.
 
 
 ## Clarifications
@@ -84,6 +85,7 @@ Create `src/test/scala/async/rest/CancellableJobApiSpec.scala` and cover:
 - [ ] Contract is documented for `POST`, `DELETE`, `HEAD`.
 - [ ] Failed state is modeled as a normal job outcome, not `500`.
 - [ ] Required headers are defined and used consistently.
+- [ ] Custom headers are defined in `src/main/scala/async/rest/http.scala` and reused by the API routes/tests.
 - [ ] `CancellableJobApi` route implementation is API-layer only.
 - [ ] API tests cover all status/header branches and pass.
 - [ ] API tests explicitly verify idempotent `DELETE` behavior for terminal states.
