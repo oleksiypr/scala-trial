@@ -243,12 +243,11 @@ inline def derived[T](using m: Mirror.Of[T]): Repr[T] =
 where
 
 ```scala
-private def productRepr[T](typeLabel: String): Repr[T] = new Repr[T] {
-  override def repr(t: T): String = new Repr[T] {
+private def productRepr[T](typeLabel: String): Repr[T] = 
+  new Repr[T] {
     override def repr(t: T): String = s"$typeLabel()"
+    override def label: String = typeLabel
   }
-  override def label: String = typeLabel
-}
 ```
 
 At this point both branches are still hardcoded.
