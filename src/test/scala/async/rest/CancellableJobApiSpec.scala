@@ -35,11 +35,12 @@ class CancellableJobApiSpec extends AsyncWordSpec
         service  <- setup
         api       = CancellableJobApi(service)
         response <- api.routes.orNotFound.run(request)
+        _        <- IO(response.status shouldBe Status.Accepted)
+        _        <- checkHeader[Location, Uri](response, uri"/jobs" / jobId)(_.uri)
+        _        <- checkHeader[`X-Job-Id`, UUID](response, jobId)(_.jobId)
+        _        <- checkHeader[`X-Total-Count`, Long](response, 42L)(_.count)
       yield
-        response.status shouldBe Status.Accepted
-        response.headers.get[Location].map(_.uri) shouldBe (uri"/jobs" / jobId).some
-        response.headers.get[`X-Job-Id`].map(_.jobId) shouldBe jobId.some
-        response.headers.get[`X-Total-Count`].map(_.count) shouldBe 42L.some
+        ()
     }
   }
 
@@ -57,11 +58,12 @@ class CancellableJobApiSpec extends AsyncWordSpec
         service  <- setup
         api       = CancellableJobApi(service)
         response <- api.routes.orNotFound.run(request)
+        _        <- IO(response.status shouldBe Status.NoContent)
+        _        <- checkHeader[`X-Job-Id`, UUID](response, jobId)(_.jobId)
+        _        <- checkHeader[`X-Done-Count`, Long](response, 12L)(_.count)
+        _        <- checkHeader[`X-Job-Status`, String](response, "cancelled")(_.status)
       yield
-        response.status shouldBe Status.NoContent
-        response.headers.get[`X-Job-Id`].map(_.jobId) shouldBe jobId.some
-        response.headers.get[`X-Done-Count`].map(_.count) shouldBe 12L.some
-        response.headers.get[`X-Job-Status`].map(_.status) shouldBe "cancelled".some
+        ()
     }
 
     "remain idempotent for terminal states and expose current terminal status" in {
@@ -89,7 +91,7 @@ class CancellableJobApiSpec extends AsyncWordSpec
           api       = CancellableJobApi(service)
           response <- api.routes.orNotFound.run(request)
           _        <- IO(response.status shouldBe Status.NoContent)
-          _        <- IO(response.headers.get[`X-Job-Status`].map(_.status) shouldBe expectedStatus.some)
+          _        <- checkHeader[`X-Job-Status`, String](response, expectedStatus)(_.status)
         yield ()
       }
     }
@@ -134,15 +136,15 @@ class CancellableJobApiSpec extends AsyncWordSpec
           api       = CancellableJobApi(service)
           response <- api.routes.orNotFound.run(request)
           _        <- IO(response.status shouldBe Status.Ok)
-          _        <- checkHeader[`X-Job-Id`, UUID](response, jobId.some)(_.jobId)
-          _        <- checkHeader[`X-Done-Count`, Long](response, snapshot.doneCount.some)(_.count)
-          _        <- checkHeader[`X-Job-Status`, String](response, expectedStatus.some)(_.status)
-          _        <- IO {
-                        if expectedStatus == "failed" then
-                          checkHeader[`X-Failure-Reason`, String](response, "Failure_001".some)(_.reason)
-                        else
-                          checkHeader[`X-Failure-Reason`, String](response, None)(_.reason)
-                      }
+          _        <- checkHeader[`X-Job-Id`, UUID](response, jobId)(_.jobId)
+          _        <- checkHeader[`X-Done-Count`, Long](response, snapshot.doneCount)(_.count)
+          _        <- checkHeader[`X-Job-Status`, String](response, expectedStatus)(_.status)
+          _        <- {
+            if expectedStatus == "failed" then
+              checkHeader[`X-Failure-Reason`, String](response, "Failure_001")(_.reason)
+            else
+              checkNoHeader[`X-Failure-Reason`](response)
+          }
         yield ()
       }
     }
