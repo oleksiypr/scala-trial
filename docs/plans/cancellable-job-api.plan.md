@@ -15,6 +15,7 @@ Define and implement the API-layer contract for `CancellableJobApi` (routes, HTT
 ## Scope
 
 ### In scope
+- TDD: red, green, refactor cycle to drive API design and implementation.
 - API routes for:
   - `POST /jobs` (no request body, just starts a new job and returns job ID and count)
   - `DELETE /jobs/{jobId}`
@@ -59,16 +60,18 @@ Create `src/test/scala/async/rest/CancellableJobApiSpec.scala` and cover:
 
 ## Implementation Plan
 1. Use TDD to drive API design and implementation, starting with tests that define expected status codes and headers for each route and job state.
-2. Freeze API boundaries and status/header contract in this plan.
-3. Add/extend custom headers in `src/main/scala/async/rest/http.scala`:
+2. Implement API routes in `CancellableJobApi` to satisfy tests, mapping service outcomes to HTTP responses as per the contract.
+3. Implementation circle should be: red (write failing test), green (implement just enough to pass), refactor (clean up code while keeping tests green).
+4. Freeze API boundaries and status/header contract in this plan.
+5. Add/extend custom headers in `src/main/scala/async/rest/http.scala`:
    - `X-Job-Id`
    - `X-Done-Count`
    - `X-Job-Status`
    - `X-Failure-Reason`
-4. Create `src/main/scala/async/rest/CancellableJobApi.scala` with http4s routes for `POST`, `DELETE`, `HEAD`.
-5. Map service outcomes to HTTP responses exactly as documented above.
-6. Keep API layer orchestration-only; avoid embedding business logic.
-7. `CancellableService` contains dummy implementation for API development/testing, but is not the focus of this plan.
+6. Create `src/main/scala/async/rest/CancellableJobApi.scala` with http4s routes for `POST`, `DELETE`, `HEAD`.
+7. Map service outcomes to HTTP responses exactly as documented above.
+8. Keep API layer orchestration-only; avoid embedding business logic.
+9. `CancellableService` contains dummy implementation for API development/testing, but is not the focus of this plan.
 
 
 ## Clarifications
