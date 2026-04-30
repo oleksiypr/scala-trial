@@ -72,4 +72,7 @@ When a client starts a job, the API prepares the job and estimates the total cou
 
 Assumptions:
 - The job can always be started
-- The job is a long-running process that can be cancelled gracefully.
+- The job can be cancelled gracefully.
+- The job is a long-running process that can take significant amount of time to complete
+- A number of jobs is not big, so we can keep track of them in memory
+
