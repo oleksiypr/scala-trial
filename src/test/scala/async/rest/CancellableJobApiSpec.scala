@@ -157,10 +157,14 @@ class CancellableJobApiSpec extends AsyncWordSpec
 
     "return 404 when job is missing" in {
       val request = Request[IO](Method.HEAD, uri"/jobs" / missing.toString)
+      val setup = IO {
+        val service = mock[CancellableService]
+        when(service.status(is(missing))).thenReturn(IO.pure(None))
+        service
+      }
 
       for
-        service  <- IO(mock[CancellableService])
-        _        <- IO(when(service.status(is(missing))).thenReturn(IO.pure(None)))
+        service  <- setup
         api       = CancellableJobApi(service)
         response <- api.routes.orNotFound.run(request)
       yield
