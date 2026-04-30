@@ -60,18 +60,20 @@ Create `src/test/scala/async/rest/CancellableJobApiSpec.scala` and cover:
 
 ## Implementation Plan
 1. Use TDD to drive API design and implementation, starting with tests that define expected status codes and headers for each route and job state.
-2. Implement API routes in `CancellableJobApi` to satisfy tests, mapping service outcomes to HTTP responses as per the contract.
-3. Implementation circle should be: red (write failing test), green (implement just enough to pass), refactor (clean up code while keeping tests green).
-4. Freeze API boundaries and status/header contract in this plan.
-5. Add/extend custom headers in `src/main/scala/async/rest/http.scala`:
-   - `X-Job-Id`
-   - `X-Done-Count`
-   - `X-Job-Status`
-   - `X-Failure-Reason`
-6. Create `src/main/scala/async/rest/CancellableJobApi.scala` with http4s routes for `POST`, `DELETE`, `HEAD`.
-7. Map service outcomes to HTTP responses exactly as documented above.
-8. Keep API layer orchestration-only; avoid embedding business logic.
-9. `CancellableService` contains dummy implementation for API development/testing, but is not the focus of this plan.
+2. Implementation circle should be: red (write failing test), green (implement just enough to pass), refactor (clean up code while keeping tests green).
+3. Freeze API boundaries and status/header contract in this plan.
+4. Tests first: `src/test/scala/async/rest/CancellableJobApiSpec.scala` with http4s routes for `POST`, `DELETE`, `HEAD`.
+5. Implement iteratively: `src/main/scala/async/rest/CancellableJobApi.scala` with http4s routes for `POST`, `DELETE`, `HEAD`.
+6. Proceed step by step, ensuring each test passes before moving to the next, and refactor as needed while keeping tests green.
+7. No new code without a failing test first, and no test without implementation to pass it.
+8. Map service outcomes to HTTP responses exactly as documented above.
+9. Add/extend custom headers in `src/main/scala/async/rest/http.scala`:
+    - `X-Job-Id`
+    - `X-Done-Count`
+    - `X-Job-Status`
+    - `X-Failure-Reason`
+10. Keep API layer orchestration-only; avoid embedding business logic.
+11. `CancellableService` contains dummy implementation for API development/testing, but is not the focus of this plan.
 
 
 ## Clarifications
