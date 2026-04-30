@@ -16,7 +16,7 @@ Define and implement the API-layer contract for `CancellableJobApi` (routes, HTT
 
 ### In scope
 - API routes for:
-  - `POST /jobs`
+  - `POST /jobs` (no request body, just starts a new job and returns job ID and count)
   - `DELETE /jobs/{jobId}`
   - `HEAD /jobs/{jobId}`
 - API-only translation from service outcomes to HTTP responses.
