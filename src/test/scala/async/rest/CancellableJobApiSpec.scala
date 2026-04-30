@@ -10,11 +10,9 @@ import org.http4s.headers.Location
 import org.http4s.implicits.*
 import org.mockito.ArgumentMatchers.eq as is
 import org.mockito.Mockito.*
-import org.scalatest.Assertion
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import org.scalatestplus.mockito.MockitoSugar
-
 import java.util.UUID
 
 class CancellableJobApiSpec extends AsyncWordSpec
@@ -129,12 +127,6 @@ class CancellableJobApiSpec extends AsyncWordSpec
         when(service.status(is(jobId))).thenReturn(IO.pure(snapshot.some))
         service
       }
-
-      def checkHeader[H: [h] =>> Header[h, Header.Single], V](
-          response: Response[IO],
-          expected: Option[V]
-        )(f: H => V): IO[Assertion] =
-        IO(response.headers.get[H].map(f) shouldBe expected)
 
       cases.traverse_ { (snapshot, expectedStatus) =>
         for
