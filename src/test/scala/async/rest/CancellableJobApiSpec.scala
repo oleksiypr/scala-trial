@@ -10,9 +10,11 @@ import org.http4s.headers.Location
 import org.http4s.implicits.*
 import org.mockito.ArgumentMatchers.eq as is
 import org.mockito.Mockito.*
+import org.scalatest.Assertion
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import org.scalatestplus.mockito.MockitoSugar
+
 import java.util.UUID
 
 class CancellableJobApiSpec extends AsyncWordSpec
@@ -47,10 +49,14 @@ class CancellableJobApiSpec extends AsyncWordSpec
     "return 204 with cancellation headers when cancellation succeeds" in {
       val cancelled = JobSnapshot(jobId, doneCount = 12L, status = JobStatus.Cancelled)
       val request   = Request[IO](Method.DELETE, uri"/jobs" / jobId.toString)
+      val setup = IO {
+        val service = mock[CancellableService]
+        when(service.cancel(is(jobId))).thenReturn(IO.pure(cancelled.some))
+        service
+      }
 
       for
-        service  <- IO(mock[CancellableService])
-        _        <- IO(when(service.cancel(is(jobId))).thenReturn(IO.pure(cancelled.some)))
+        service  <- setup
         api       = CancellableJobApi(service)
         response <- api.routes.orNotFound.run(request)
       yield
@@ -61,18 +67,27 @@ class CancellableJobApiSpec extends AsyncWordSpec
     }
 
     "remain idempotent for terminal states and expose current terminal status" in {
+      val request = Request[IO](Method.DELETE, uri"/jobs" / jobId.toString)
+
       val terminalStates = List(
         JobStatus.Cancelled -> "cancelled",
         JobStatus.Failed    -> "failed",
         JobStatus.Completed -> "completed"
       )
 
-      val request = Request[IO](Method.DELETE, uri"/jobs" / jobId.toString)
+      def setup(state: JobStatus) = IO {
+        val service = mock[CancellableService]
+        when:
+          service.cancel(is(jobId))
+        .thenReturn:
+          IO.pure(JobSnapshot(jobId, doneCount = 9L, status = state).some)
+
+        service
+      }
 
       terminalStates.traverse_ { case (state, expectedStatus) =>
         for
-          service  <- IO(mock[CancellableService])
-          _        <- IO(when(service.cancel(is(jobId))).thenReturn(IO.pure(JobSnapshot(jobId, 9L, state).some)))
+          service  <- setup(state)
           api       = CancellableJobApi(service)
           response <- api.routes.orNotFound.run(request)
           _        <- IO(response.status shouldBe Status.NoContent)
@@ -83,10 +98,14 @@ class CancellableJobApiSpec extends AsyncWordSpec
 
     "return 404 when job is missing" in {
       val request = Request[IO](Method.DELETE, uri"/jobs" / missing.toString)
+      val setup = IO {
+        val service = mock[CancellableService]
+        when(service.cancel(is(missing))).thenReturn(IO.pure(None))
+        service
+      }
 
       for
-        service  <- IO(mock[CancellableService])
-        _        <- IO(when(service.cancel(is(missing))).thenReturn(IO.pure(None)))
+        service  <- setup
         api       = CancellableJobApi(service)
         response <- api.routes.orNotFound.run(request)
       yield
@@ -96,32 +115,42 @@ class CancellableJobApiSpec extends AsyncWordSpec
 
   "HEAD /jobs/{jobId}" should {
     "return 200 for running, cancelled, failed and completed states with expected headers" in {
-      val cases = List(
-        JobSnapshot(jobId, 3L, JobStatus.Running, None)         -> "running",
-        JobSnapshot(jobId, 4L, JobStatus.Cancelled, None)       -> "cancelled",
-        JobSnapshot(jobId, 5L, JobStatus.Failed, Some("boom")) -> "failed",
-        JobSnapshot(jobId, 6L, JobStatus.Completed, None)       -> "completed"
-      )
-
       val request = Request[IO](Method.HEAD, uri"/jobs" / jobId.toString)
 
-      cases.traverse_ { case (snapshot, expectedStatus) =>
+      val cases = List(
+        JobSnapshot(jobId, doneCount = 3L, JobStatus.Running,   failureReason = None)                -> "running",
+        JobSnapshot(jobId, doneCount = 4L, JobStatus.Cancelled, failureReason = None)                -> "cancelled",
+        JobSnapshot(jobId, doneCount = 5L, JobStatus.Failed,    failureReason = Some("Failure_001")) -> "failed",
+        JobSnapshot(jobId, doneCount = 6L, JobStatus.Completed, failureReason = None)                -> "completed"
+      )
+
+      def setup(snapshot: JobSnapshot) = IO {
+        val service = mock[CancellableService]
+        when(service.status(is(jobId))).thenReturn(IO.pure(snapshot.some))
+        service
+      }
+
+      def checkHeader[H: [h] =>> Header[h, Header.Single], V](
+          response: Response[IO],
+          expected: Option[V]
+        )(f: H => V): IO[Assertion] =
+        IO(response.headers.get[H].map(f) shouldBe expected)
+
+      cases.traverse_ { (snapshot, expectedStatus) =>
         for
-          service  <- IO(mock[CancellableService])
-          _        <- IO(when(service.status(is(jobId))).thenReturn(IO.pure(snapshot.some)))
+          service  <- setup(snapshot)
           api       = CancellableJobApi(service)
           response <- api.routes.orNotFound.run(request)
           _        <- IO(response.status shouldBe Status.Ok)
-          _        <- IO(response.headers.get[`X-Job-Id`].map(_.jobId) shouldBe jobId.some)
-          _        <- IO(response.headers.get[`X-Done-Count`].map(_.count) shouldBe snapshot.doneCount.some)
-          _        <- IO(response.headers.get[`X-Job-Status`].map(_.status) shouldBe expectedStatus.some)
-          _        <- IO(
+          _        <- checkHeader[`X-Job-Id`, UUID](response, jobId.some)(_.jobId)
+          _        <- checkHeader[`X-Done-Count`, Long](response, snapshot.doneCount.some)(_.count)
+          _        <- checkHeader[`X-Job-Status`, String](response, expectedStatus.some)(_.status)
+          _        <- IO {
                         if expectedStatus == "failed" then
-                          response.headers.get[`X-Failure-Reason`].map(_.reason) shouldBe "boom".some
+                          checkHeader[`X-Failure-Reason`, String](response, "Failure_001".some)(_.reason)
                         else
-                          response.headers.get[`X-Failure-Reason`] shouldBe None
-                      )
-
+                          checkHeader[`X-Failure-Reason`, String](response, None)(_.reason)
+                      }
         yield ()
       }
     }
@@ -138,6 +167,4 @@ class CancellableJobApiSpec extends AsyncWordSpec
         response.status shouldBe Status.NotFound
     }
   }
-
 }
-
