@@ -9,7 +9,7 @@ Define and implement the API-layer contract for `CancellableJobApi` (routes, HTT
   - `src/test/scala/async/rest/AsyncJobApiSpec.scala`
 - Shared header utility:
   - `src/main/scala/async/rest/http.scala`
-- Article intent: start job, cancel job, and query job status.
+- Article intent: start job, cancel job, and query job status via `HEAD /jobs/{jobId}`.
 - Development process as per TDD and API contract-first design.
 
 ## Scope
@@ -27,7 +27,7 @@ Define and implement the API-layer contract for `CancellableJobApi` (routes, HTT
 - Service/job-runner internals, persistence, and scheduling.
 - Concurrency/cancellation mechanics inside domain/service layer.
 - File-generation internals for completed job result.
-- `GET /jobs/{jobId}`
+- `GET /jobs/{jobId}` (deferred to a later iteration; response-body/file semantics are intentionally excluded from this plan)
 
 ## API Contract Decisions
 - `POST /jobs`
@@ -40,18 +40,18 @@ Define and implement the API-layer contract for `CancellableJobApi` (routes, HTT
 - `HEAD /jobs/{jobId}`
   - `404 Not Found` if missing
   - `200 OK` for known states (`running`, `cancelled`, `failed`, `completed`)
-  - Headers: `X-Job-Id`, `X-Done-Count`, `X-Job-Status`
-- Headers for non-completed states: `X-Job-Id`, `X-Done-Count`, `X-Job-Status`
-  - `failed` additionally exposes `X-Failure-Reason`
+  - Response headers: `X-Job-Id`, `X-Done-Count`, `X-Job-Status`
+  - For `failed`, additionally expose `X-Failure-Reason`
 
 
 ### Failed-state rule
-`Failed` is a valid job lifecycle outcome for long-running jobs. It is not an internal server error.
+`Failed` is a valid job lifecycle outcome for long-running jobs. It is not an internal server error and must be represented as a known job state, not as `500 Internal Server Error`.
 
 ## Testing Plan (API Only)
 Create `src/test/scala/async/rest/CancellableJobApiSpec.scala` and cover:
 - `POST /jobs` -> `202` + `Location`, `X-Job-Id`, `X-Total-Count`
 - `DELETE /jobs/{jobId}` success -> `204` + cancellation headers
+- `DELETE /jobs/{jobId}` terminal states (`cancelled`, `failed`, `completed`) -> still `204` (idempotent behavior)
 - `DELETE /jobs/{jobId}` missing -> `404`
 - `HEAD /jobs/{jobId}` each state -> `200` + expected headers
 - `HEAD /jobs/{jobId}` missing -> `404`
@@ -81,4 +81,5 @@ Create `src/test/scala/async/rest/CancellableJobApiSpec.scala` and cover:
 - [ ] Required headers are defined and used consistently.
 - [ ] `CancellableJobApi` route implementation is API-layer only.
 - [ ] API tests cover all status/header branches and pass.
+- [ ] API tests explicitly verify idempotent `DELETE` behavior for terminal states.
 
