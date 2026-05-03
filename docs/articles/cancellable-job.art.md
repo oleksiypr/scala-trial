@@ -1,8 +1,9 @@
 # CancellableJobApi
 
-The `CancellableJobApi` is an interface that allows you to manage and cancel jobs in a system. It provides methods to cancel jobs, check the status of jobs, and retrieve information about jobs.
+An interface that allows you to manage and cancel jobs in a system. It provides methods to cancel jobs, check the status of jobs, and retrieve information about jobs.
 
-## Sequence Diagram
+## Sequence Diagram including RESTful API specification
+
 
 ```mermaid
 sequenceDiagram
@@ -65,6 +66,14 @@ sequenceDiagram
    
 
 For the purpose of this article, we implement a `CancellableJobApi` that allows clients to start a job, cancel a job, and check the status of a job with `HEAD` request. 
+
+API summary:
+- `POST /jobs` - starts a new job, returns `202 Accepted` with headers `Location`, `X-Job-Id`, `X-Total-Count`
+- `DELETE /jobs/{jobId}` - cancels a job, returns `204 No Content` with headers `X-Job-Id`, `X-Done-Count`, `X-Job-Status` (reflecting current state, even if already terminal)
+- `HEAD /jobs/{jobId}` - checks job status, returns `200 OK` with headers `X-Job-Id`, `X-Done-Count`, `X-Job-Status` (and `X-Failure-Reason` if failed), or `404 Not Found` if job does not exist     
+    
+
+## CancellableService
 
 The `CancellableService` is responsible for managing the jobs and their statuses, while the `JobRunner` is responsible for executing the jobs in the background. As far as a job is started it is in `Running` status.
 

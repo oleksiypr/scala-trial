@@ -22,42 +22,11 @@ object CancellableService {
   )
 }
 
-trait CancellableService {
+class CancellableService {
 
   import CancellableService.*
 
-  def start(): IO[JobStarted]
-  def cancel(jobId: UUID): IO[Option[JobSnapshot]]
-  def status(jobId: UUID): IO[Option[JobSnapshot]]
+  def start(): IO[JobStarted] = IO.pure(JobStarted(UUID.randomUUID(), totalCount = 100L))
+  def cancel(jobId: UUID): IO[Option[JobSnapshot]] = IO.pure(None)
+  def status(jobId: UUID): IO[Option[JobSnapshot]] = IO.pure(None)
 }
-
-final class DummyCancellableService extends CancellableService {
-
-  import CancellableService.*
-
-  private val jobs = TrieMap.empty[UUID, JobSnapshot]
-
-  override def start(): IO[JobStarted] = IO {
-    val id      = UUID.randomUUID()
-    val started = JobStarted(id = id, totalCount = 100L)
-    jobs.update(id, JobSnapshot(id = id, doneCount = 0L, status = JobStatus.Running))
-    started
-  }
-
-  override def cancel(jobId: UUID): IO[Option[JobSnapshot]] = IO {
-    jobs.get(jobId).map {
-      case snapshot if isTerminal(snapshot.status) => snapshot
-      case snapshot =>
-        val cancelled = snapshot.copy(status = JobStatus.Cancelled)
-        jobs.update(jobId, cancelled)
-        cancelled
-    }
-  }
-
-  override def status(jobId: UUID): IO[Option[JobSnapshot]] =
-    IO.pure(jobs.get(jobId))
-
-  private def isTerminal(status: JobStatus): Boolean =
-    status == JobStatus.Cancelled || status == JobStatus.Failed || status == JobStatus.Completed
-}
-

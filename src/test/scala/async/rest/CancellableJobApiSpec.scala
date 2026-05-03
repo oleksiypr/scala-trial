@@ -85,7 +85,7 @@ class CancellableJobApiSpec extends AsyncWordSpec
         service
       }
 
-      terminalStates.traverse_ { case (state, expectedStatus) =>
+      terminalStates.traverse_ { (state, expectedStatus) =>
         for
           service  <- setup(state)
           api       = CancellableJobApi(service)
