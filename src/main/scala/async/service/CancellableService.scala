@@ -1,6 +1,7 @@
 package async.service
 
 import cats.effect.IO
+import cats.syntax.all.*
 import java.util.UUID
 
 object CancellableService {
@@ -28,7 +29,7 @@ class CancellableService(worker: CancellableWorker) {
   def start(): IO[JobStarted] =
     for
       prep <- worker.prepare()
-      _    <- worker.run(prep.jobId)
+      _    <- worker.run(prep.jobId).start
     yield JobStarted(prep.jobId, prep.totalCount)
 
   def cancel(jobId: UUID): IO[Option[JobSnapshot]] = IO.pure(None)
