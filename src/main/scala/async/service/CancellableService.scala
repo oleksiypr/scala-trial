@@ -1,8 +1,8 @@
 package async.service
 
 import cats.effect.IO
+
 import java.util.UUID
-import scala.collection.concurrent.TrieMap
 
 object CancellableService {
 
@@ -22,11 +22,16 @@ object CancellableService {
   )
 }
 
-class CancellableService {
+class CancellableService(worker: CancellableWorker) {
 
   import CancellableService.*
 
-  def start(): IO[JobStarted] = IO.pure(JobStarted(UUID.randomUUID(), totalCount = 100L))
+  def start(): IO[JobStarted] =
+    for
+      prep <- worker.prepare()
+      _    <- worker.run(prep.jobId)
+    yield JobStarted(prep.jobId, prep.totalCount)
+
   def cancel(jobId: UUID): IO[Option[JobSnapshot]] = IO.pure(None)
   def status(jobId: UUID): IO[Option[JobSnapshot]] = IO.pure(None)
 }
