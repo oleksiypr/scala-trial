@@ -1,7 +1,6 @@
 package async.service
 
 import cats.effect.IO
-
 import java.util.UUID
 
 object CancellableService {
